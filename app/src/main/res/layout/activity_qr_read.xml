@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".QrReadActivity">
+
+    <ImageView
+        android:id="@+id/qrImageView"
+        android:layout_width="250dp"
+        android:layout_height="250dp"
+        android:layout_marginTop="70dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:srcCompat="@drawable/icon_qr_default" />
+
+    <TextView
+        android:id="@+id/urlTextView"
+        android:layout_width="0dp"
+        android:layout_height="100dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="30dp"
+        android:layout_marginEnd="16dp"
+        android:inputType="text|textUri|textMultiLine"
+        android:text="TextView"
+        android:textSize="20sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/qrImageView" />
+
+    <ImageButton
+        android:id="@+id/saveImageButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintEnd_toStartOf="@+id/copyImageButton"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/urlTextView"
+        app:srcCompat="@drawable/icon_save" />
+
+    <ImageButton
+        android:id="@+id/copyImageButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        app:layout_constraintEnd_toStartOf="@+id/openImageButton"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toEndOf="@+id/saveImageButton"
+        app:layout_constraintTop_toBottomOf="@+id/urlTextView"
+        app:srcCompat="@drawable/icon_copy" />
+
+    <ImageButton
+        android:id="@+id/openImageButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toEndOf="@+id/copyImageButton"
+        app:layout_constraintTop_toBottomOf="@+id/urlTextView"
+        app:srcCompat="@drawable/icon_open" />
+
+    <TextView
+        android:id="@+id/textView1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Save"
+        app:layout_constraintEnd_toEndOf="@+id/saveImageButton"
+        app:layout_constraintStart_toStartOf="@+id/saveImageButton"
+        app:layout_constraintTop_toBottomOf="@+id/saveImageButton" />
+
+    <TextView
+        android:id="@+id/textView2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Copy"
+        app:layout_constraintEnd_toEndOf="@+id/copyImageButton"
+        app:layout_constraintStart_toStartOf="@+id/copyImageButton"
+        app:layout_constraintTop_toBottomOf="@+id/copyImageButton" />
+
+    <TextView
+        android:id="@+id/textView3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Share"
+        app:layout_constraintEnd_toEndOf="@+id/openImageButton"
+        app:layout_constraintStart_toStartOf="@+id/openImageButton"
+        app:layout_constraintTop_toBottomOf="@+id/openImageButton" />
+
+    <Button
+        android:id="@+id/backButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#5A595B"
+        android:text="Scan"
+        android:textColor="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>
