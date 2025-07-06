@@ -55,13 +55,19 @@ public class VideoCaptureActivity extends AppCompatActivity {
     });
     String qrcode = "";
     CountDownTimer currentRecordCountDownTimer;
+    CountDownTimer waitToStartCountDownTimer;
+
     MediaPlayer mp_start;
     MediaPlayer mp_stop;
     MediaPlayer mp_tick;
     MediaPlayer mp_warn;
     boolean isRecord = false;
     boolean prosesStop = false;
-    
+    long maxDuration = 60000;
+    int detik = 0;
+
+    boolean waitToStart = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -86,6 +92,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 activityResultLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
             } else {
+                waitToStart = false;
                 captureVideo();
             }
         });
@@ -111,9 +118,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
         service = Executors.newSingleThreadExecutor();
 
 
-        currentRecordCountDownTimer = new CountDownTimer(60000, 1000) { // 30 seconds, 1-second intervals
+        currentRecordCountDownTimer = new CountDownTimer(maxDuration, 1000) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
-                int detik = (int) millisUntilFinished / 1000;
+                detik = (int) millisUntilFinished / 1000;
                 Log.i("TIME COUNTDOWN", detik + " seconds remaining to stop");
                 if(detik==3) {
                     mp_warn.start();
@@ -126,6 +133,15 @@ public class VideoCaptureActivity extends AppCompatActivity {
             public void onFinish() {
                 Log.i("TIME COUNTDOWN", "Timer finished!");
                 captureVideo();
+            }
+        };
+
+        waitToStartCountDownTimer = new CountDownTimer(3000, 1000) { // 30 seconds, 1-second intervals
+            public void onTick(long millisUntilFinished) {
+            }
+
+            public void onFinish() {
+                waitToStart = false;
             }
         };
 
@@ -174,12 +190,14 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     String msg = "Error: " + ((VideoRecordEvent.Finalize) videoRecordEvent).getError();
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
                 }
+                waitToStartCountDownTimer.start();
                 currentRecordCountDownTimer.cancel();
                 mp_stop.start();
 
                 capture.setImageResource(R.drawable.round_fiber_manual_record_24);
                 isRecord = false;
                 prosesStop = false;
+                qrcode = "";
             }
         });
     }
@@ -202,18 +220,18 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), new QRCodeImageAnalyzer(new QRCodeFoundListener() {
                     @Override
                     public void onQRCodeFound(String _qrCode) {
-                        if(_qrCode.equalsIgnoreCase("STOP")) {
+                        int condition = (int) maxDuration/1000;
+                        if(detik<condition-3 && _qrCode.equalsIgnoreCase(qrcode)) {
                             if (isRecord && !prosesStop) {
+                                waitToStart = true;
                                 prosesStop = true;
-                                //stopRecordCountDownTimer.start();
                                 captureVideo();
                             }
 
                             return;
                         }
 
-                        if(!isRecord) {
-                            qrcode = _qrCode;
+                        if(!waitToStart && !isRecord) {
                             if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                                 activityResultLauncher.launch(Manifest.permission.CAMERA);
                             } else if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -221,6 +239,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                             } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                                 activityResultLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
                             } else {
+                                qrcode = _qrCode;
                                 captureVideo();
                             }
                         }
@@ -233,7 +252,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 }));
 
                 Recorder recorder = new Recorder.Builder()
-                        .setQualitySelector(QualitySelector.from(Quality.HD))
+                        .setQualitySelector(QualitySelector.from(Quality.LOWEST))
                         .build();
                 videoCapture = VideoCapture.withOutput(recorder);
 
