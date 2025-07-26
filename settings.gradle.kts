@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Video Packing"
+rootProject.name = "Azizahzi Official"
 include(":app")
  

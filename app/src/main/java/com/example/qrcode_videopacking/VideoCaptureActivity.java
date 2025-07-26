@@ -1,8 +1,12 @@
 package com.example.qrcode_videopacking;
 
 import android.Manifest;
+import android.app.Dialog;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
@@ -10,12 +14,14 @@ import android.os.CountDownTimer;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
@@ -33,13 +39,24 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.example.qrcode_videopacking.data.RestApi;
+import com.example.qrcode_videopacking.data.RetroFit;
+import com.example.qrcode_videopacking.model.ResponseOrderReturn;
+import com.example.qrcode_videopacking.model.ResponseSaveVideoPacking;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.text.SimpleDateFormat;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class VideoCaptureActivity extends AppCompatActivity {
     ExecutorService service;
@@ -54,6 +71,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }
     });
     String qrcode = "";
+    String video_packing = "";
     CountDownTimer currentRecordCountDownTimer;
     CountDownTimer waitToStartCountDownTimer;
 
@@ -63,10 +81,12 @@ public class VideoCaptureActivity extends AppCompatActivity {
     MediaPlayer mp_warn;
     boolean isRecord = false;
     boolean prosesStop = false;
-    long maxDuration = 60000;
+    long maxDuration = 600000;
     int detik = 0;
 
     boolean waitToStart = false;
+    Context context;
+    Dialog dialog_loading;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,6 +94,12 @@ public class VideoCaptureActivity extends AppCompatActivity {
         getSupportActionBar().hide();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_video_capture);
+
+        context = VideoCaptureActivity.this;
+        dialog_loading = new Dialog(context);
+        dialog_loading.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog_loading.setCancelable(false);
+        dialog_loading.setContentView(R.layout.loading_dialog);
 
         mp_start = MediaPlayer.create(this, R.raw.start);
         mp_stop = MediaPlayer.create(this, R.raw.stop);
@@ -147,6 +173,11 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     }
 
+    public void openDialogLoading() {
+        dialog_loading.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        dialog_loading.show();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -165,11 +196,13 @@ public class VideoCaptureActivity extends AppCompatActivity {
         prosesStop = false;
         mp_start.start();
         currentRecordCountDownTimer.start();
-        String name = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.getDefault()).format(System.currentTimeMillis());
+        video_packing = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.getDefault()).format(System.currentTimeMillis());
+        video_packing = qrcode + "_" +video_packing;
         ContentValues contentValues = new ContentValues();
-        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name + qrcode);
+        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, video_packing);
         contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
         contentValues.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CameraX-Video");
+
 
         MediaStoreOutputOptions options = new MediaStoreOutputOptions.Builder(getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
                 .setContentValues(contentValues).build();
@@ -184,6 +217,30 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 if (!((VideoRecordEvent.Finalize) videoRecordEvent).hasError()) {
                     String msg = "Video capture succeeded: " + ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+
+                    RequestBody noresi       = RequestBody.create(MediaType.parse("text/plain"), qrcode);
+                    RequestBody videopacking = RequestBody.create(MediaType.parse("text/plain"), video_packing+".mp4");
+
+                    openDialogLoading();
+                    RestApi api = RetroFit.getInstanceRetrofit();
+                    Call<ResponseSaveVideoPacking> saveVideoPackingCall = api.saveVideoPacking(noresi, videopacking);
+                    saveVideoPackingCall.enqueue(new Callback<ResponseSaveVideoPacking>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ResponseSaveVideoPacking> call, @NonNull Response<ResponseSaveVideoPacking> response) {
+                            dialog_loading.dismiss();
+                            boolean success = Objects.requireNonNull(response.body()).getSuccess();
+                            if(success) {
+                                String message = Objects.requireNonNull(response.body()).getMessage();
+                                Toast.makeText(VideoCaptureActivity.this,message,Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                        @Override
+                        public void onFailure(@NonNull Call<ResponseSaveVideoPacking> call, @NonNull Throwable t) {
+                            dialog_loading.dismiss();
+                            Toast.makeText(VideoCaptureActivity.this,"GAGAL SIMPAN DATA!",Toast.LENGTH_SHORT).show();
+                        }
+                    });
+
                 } else {
                     recording.close();
                     recording = null;
@@ -221,7 +278,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     @Override
                     public void onQRCodeFound(String _qrCode) {
                         int condition = (int) maxDuration/1000;
-                        if(detik<condition-3 && _qrCode.equalsIgnoreCase(qrcode)) {
+                        if(detik<condition-10 && _qrCode.equalsIgnoreCase(qrcode)) {
                             if (isRecord && !prosesStop) {
                                 waitToStart = true;
                                 prosesStop = true;
