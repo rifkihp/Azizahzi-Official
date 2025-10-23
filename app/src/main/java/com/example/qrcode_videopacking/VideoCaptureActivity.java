@@ -41,8 +41,7 @@ import androidx.core.content.ContextCompat;
 
 import com.example.qrcode_videopacking.data.RestApi;
 import com.example.qrcode_videopacking.data.RetroFit;
-import com.example.qrcode_videopacking.model.ResponseOrderReturn;
-import com.example.qrcode_videopacking.model.ResponseSaveVideoPacking;
+import com.example.qrcode_videopacking.model.ResponseSaveRecord;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.text.SimpleDateFormat;
@@ -74,7 +73,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
     String video_packing = "";
     CountDownTimer currentRecordCountDownTimer;
     CountDownTimer waitToStartCountDownTimer;
-
+    CountDownTimer waitToStopCountDownTimer;
     MediaPlayer mp_start;
     MediaPlayer mp_stop;
     MediaPlayer mp_tick;
@@ -85,6 +84,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
     int detik = 0;
 
     boolean waitToStart = false;
+
+    boolean waitToStop  = false;
+
     Context context;
     Dialog dialog_loading;
 
@@ -143,7 +145,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
         service = Executors.newSingleThreadExecutor();
 
-
         currentRecordCountDownTimer = new CountDownTimer(maxDuration, 1000) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
                 detik = (int) millisUntilFinished / 1000;
@@ -168,8 +169,25 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
             public void onFinish() {
                 waitToStart = false;
+                waitToStop  = false;
             }
         };
+
+        waitToStopCountDownTimer = new CountDownTimer(3000, 1000) { // 30 seconds, 1-second intervals
+            public void onTick(long millisUntilFinished) {
+            }
+
+            public void onFinish() {
+                waitToStart = true;
+                prosesStop = true;
+                captureVideo();
+            }
+        };
+
+
+
+
+
 
     }
 
@@ -202,8 +220,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
         contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, video_packing);
         contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
         contentValues.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CameraX-Video");
-
-
+        
         MediaStoreOutputOptions options = new MediaStoreOutputOptions.Builder(getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
                 .setContentValues(contentValues).build();
 
@@ -223,10 +240,10 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                     openDialogLoading();
                     RestApi api = RetroFit.getInstanceRetrofit();
-                    Call<ResponseSaveVideoPacking> saveVideoPackingCall = api.saveVideoPacking(noresi, videopacking);
-                    saveVideoPackingCall.enqueue(new Callback<ResponseSaveVideoPacking>() {
+                    Call<ResponseSaveRecord> saveVideoPackingCall = api.saveVideoPacking(noresi, videopacking);
+                    saveVideoPackingCall.enqueue(new Callback<ResponseSaveRecord>() {
                         @Override
-                        public void onResponse(@NonNull Call<ResponseSaveVideoPacking> call, @NonNull Response<ResponseSaveVideoPacking> response) {
+                        public void onResponse(@NonNull Call<ResponseSaveRecord> call, @NonNull Response<ResponseSaveRecord> response) {
                             dialog_loading.dismiss();
                             boolean success = Objects.requireNonNull(response.body()).getSuccess();
                             if(success) {
@@ -235,7 +252,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                             }
                         }
                         @Override
-                        public void onFailure(@NonNull Call<ResponseSaveVideoPacking> call, @NonNull Throwable t) {
+                        public void onFailure(@NonNull Call<ResponseSaveRecord> call, @NonNull Throwable t) {
                             dialog_loading.dismiss();
                             Toast.makeText(VideoCaptureActivity.this,"GAGAL SIMPAN DATA!",Toast.LENGTH_SHORT).show();
                         }
@@ -279,10 +296,13 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     public void onQRCodeFound(String _qrCode) {
                         int condition = (int) maxDuration/1000;
                         if(detik<condition-10 && _qrCode.equalsIgnoreCase(qrcode)) {
-                            if (isRecord && !prosesStop) {
-                                waitToStart = true;
-                                prosesStop = true;
-                                captureVideo();
+                            if(!waitToStop) {
+                                if (isRecord && !prosesStop) {
+                                    waitToStop = true;
+
+                                    waitToStopCountDownTimer.start();
+
+                                }
                             }
 
                             return;

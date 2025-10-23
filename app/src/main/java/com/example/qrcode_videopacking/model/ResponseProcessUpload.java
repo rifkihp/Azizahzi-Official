@@ -1,7 +1,7 @@
 package com.example.qrcode_videopacking.model;
 import com.google.gson.annotations.SerializedName;
 
-public class ResponseUploadDokumen {
+public class ResponseProcessUpload {
 
     @SerializedName("name")
     String name;

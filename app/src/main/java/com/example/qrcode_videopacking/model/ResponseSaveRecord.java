@@ -2,7 +2,7 @@ package com.example.qrcode_videopacking.model;
 
 import com.google.gson.annotations.SerializedName;
 
-public class ResponseSaveVideoPacking {
+public class ResponseSaveRecord {
 
 	@SerializedName("success")
 	boolean success;

@@ -24,15 +24,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.QrcodeReader"
         tools:targetApi="31">
-        <activity
-            android:name=".QrReadActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainMenuActivity"
-            android:exported="false" />
+
         <activity
             android:name=".VideoCaptureActivity"
             android:exported="true">
