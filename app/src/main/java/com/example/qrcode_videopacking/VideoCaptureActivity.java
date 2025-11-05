@@ -8,15 +8,19 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CountDownTimer;
+import android.os.Handler;
+import android.os.StrictMode;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageButton;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -44,7 +48,11 @@ import com.example.qrcode_videopacking.data.RetroFit;
 import com.example.qrcode_videopacking.model.ResponseSaveRecord;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -52,6 +60,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -90,12 +99,39 @@ public class VideoCaptureActivity extends AppCompatActivity {
     Context context;
     Dialog dialog_loading;
 
+
+    //UPLOAD FILE
+
+    int count_of_items = 1;
+    int index_of_items = 0;
+    Uri[] mFileCapture = new Uri[count_of_items];
+    int[] status_upload = new int[count_of_items]; //0:on Proses, 1:success, -1: gagal;
+    Handler[] mHandlerUpload = new Handler[count_of_items];
+
+    String[] upload_titles = new String[] {"Video Packing"};
+    String[] pathfile = new String[count_of_items];
+
+    String[] namefile = new String[count_of_items];
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getSupportActionBar().hide();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+        StrictMode.VmPolicy.Builder builder = new StrictMode.VmPolicy.Builder();
+        StrictMode.setVmPolicy(builder.build());
+        builder.detectFileUriExposure();
+
         setContentView(R.layout.activity_video_capture);
+
+        for(int i=0; i<count_of_items; i++) {
+            mFileCapture[i] = null;
+            status_upload[i] = 0;
+            mHandlerUpload[i] = new Handler();
+            pathfile[i] = "";
+            namefile[i] = "";
+        }
 
         context = VideoCaptureActivity.this;
         dialog_loading = new Dialog(context);
@@ -183,12 +219,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 captureVideo();
             }
         };
-
-
-
-
-
-
     }
 
     public void openDialogLoading() {
@@ -241,7 +271,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     openDialogLoading();
                     RestApi api = RetroFit.getInstanceRetrofit();
                     Call<ResponseSaveRecord> saveVideoPackingCall = api.saveVideoPacking(noresi, videopacking);
-                    saveVideoPackingCall.enqueue(new Callback<ResponseSaveRecord>() {
+                    saveVideoPackingCall.enqueue(new Callback<>() {
                         @Override
                         public void onResponse(@NonNull Call<ResponseSaveRecord> call, @NonNull Response<ResponseSaveRecord> response) {
                             dialog_loading.dismiss();
@@ -299,9 +329,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                             if(!waitToStop) {
                                 if (isRecord && !prosesStop) {
                                     waitToStop = true;
-
                                     waitToStopCountDownTimer.start();
-
                                 }
                             }
 
@@ -345,6 +373,110 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    public void uploadChuckFile_(File file, String destination, String filename, String ext, int start, ProgressBar pgbar, int position) throws IOException {
+
+        mHandlerUpload[position].post(new Runnable() {
+            @Override
+            public void run() {
+                mHandlerUpload[position].removeCallbacks(this);
+                try {
+                    uploadChuckFile(file, destination, filename, ext, start, pgbar, position);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    public void uploadChuckFile(File file, String destination, String filename, String ext, int start, ProgressBar pgbar, int position) throws IOException {
+        FileInputStream f = new FileInputStream(file.getAbsolutePath());
+
+        final int bytes_per_chunk = 1*1024*1024; // == 1MB
+        final int size = f.available(); // Size of original file
+        final int end = (start + bytes_per_chunk) >= size ? size : (start + bytes_per_chunk);
+
+        byte[] data = new byte[size];  // Size of original file
+        byte[] subData = new byte[bytes_per_chunk];  // 4MB Sized Array
+
+        f.read(data); // Read The Data
+        subData = Arrays.copyOfRange(data, start, end);
+        RequestBody requestFile = RequestBody.create(MediaType.parse("*/*"), subData);
+
+        // MultipartBody.Part is used to send also the actual file name
+        MultipartBody.Part ax_file_input = MultipartBody.Part.createFormData("ax_file_input",
+                filename, // filename, this is optional
+                requestFile
+        );
+
+        RequestBody ax_file_path = RequestBody.create(MediaType.parse("text/plain"), destination);
+        RequestBody ax_allow_ext = RequestBody.create(MediaType.parse("text/plain"), ext);
+        RequestBody ax_file_name = RequestBody.create(MediaType.parse("text/plain"), filename);
+        RequestBody ax_max_file_size = RequestBody.create(MediaType.parse("text/plain"), "10G");
+        RequestBody ax_start_byte = RequestBody.create(MediaType.parse("text/plain"), String.valueOf(end));
+        RequestBody ax_last_chunk = RequestBody.create(MediaType.parse("text/plain"), end == size ? "true" : "false");
+
+        RestApi api = RetroFit.getInstanceRetrofit();
+        Call<ResponseUploadDokumen> uploadDokumenCall = api.upload(
+                ax_file_input,
+                ax_file_path,
+                ax_allow_ext,
+                ax_file_name,
+                ax_max_file_size,
+                ax_start_byte,
+                ax_last_chunk
+        );
+
+        uploadDokumenCall.enqueue(new Callback<ResponseUploadDokumen>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseUploadDokumen> call, @NonNull Response<ResponseUploadDokumen> response) {
+                int status = response.body().getStatus();
+                String info = response.body().getInfo();
+                String name = response.body().getName();
+
+                double i = 100 * ((double) end/(double) size);
+                int persen = (int) i;
+
+                Log.e("PGBARBAR", i+" % ");
+                pgbar.setProgress(persen);
+                if (status == -1) {
+                    //error
+                    status_upload[position] = -1;
+                    UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
+                    UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
+                    UploadDokumenUtamaFragment.tvStatus_uploads[position].setVisibility(View.VISIBLE);
+                    UploadDokumenUtamaFragment.tvStatus_uploads[position].setText(info);
+                } else if (end == size) {
+                    //DONE
+                    status_upload[position] = 1;
+                    UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
+                    UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
+                    UploadDokumenUtamaFragment.etFile_uploads[position].setText(name);
+                    namefile[position] = name;
+                } else {
+                    try {
+                        uploadChuckFile_(file, destination, filename, ext, end, pgbar, position);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        status_upload[position] = -1;
+                        UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
+                        UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
+                        UploadDokumenUtamaFragment.tvStatus_uploads[position].setVisibility(View.VISIBLE);
+                        UploadDokumenUtamaFragment.tvStatus_uploads[position].setText(e.getMessage());
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<ResponseUploadDokumen> call, @NonNull Throwable t) {
+                t.printStackTrace();
+
+                status_upload[position] = -1;
+                //error
+                showInformationDialog("Proses upload Dokumen Gagal.", false);
+            }
+        });
     }
 
     private void toggleFlash(Camera camera) {
