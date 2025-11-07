@@ -58,6 +58,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
@@ -109,7 +110,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     //UPLOAD FILE
 
-    int count_of_items = 1;
+    int count_of_items = 5;
     Uri[] mFileCapture = new Uri[count_of_items];
     Handler[] mHandlerUpload = new Handler[count_of_items];
 
@@ -128,10 +129,18 @@ public class VideoCaptureActivity extends AppCompatActivity {
         StrictMode.setVmPolicy(builder.build());
         builder.detectFileUriExposure();
 
+
         setContentView(R.layout.activity_video_capture);
         pbVideoUpload = findViewById(R.id.pbVideoUpload);
         stVideoUpload = findViewById(R.id.stVideoUpload);
-        
+
+        pbVideoUpload.setVisibility(View.GONE);
+        stVideoUpload.setVisibility(View.GONE);
+        for(int i=0; i<count_of_items; i++) {
+            mFileCapture[i] = null;
+            mHandlerUpload[i] = new Handler();
+        }
+
         context = VideoCaptureActivity.this;
         dh = new DatabaseHandler(context);
         dh.createTable();
@@ -211,7 +220,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-        waitToStopCountDownTimer = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
+        waitToStopCountDownTimer = new CountDownTimer(500, 500) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
             }
 
@@ -264,10 +273,16 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 capture.setEnabled(true);
             } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
                 if (!((VideoRecordEvent.Finalize) videoRecordEvent).hasError()) {
-                    Uri mFileCapture = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
-                    String msg = "Video capture succeeded: " + mFileCapture;
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-                    dh.inserUploadtData(mFileCapture.toString());
+                    Uri mFileCaptured = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
+                    Toast.makeText(this, mFileCaptured.toString(), Toast.LENGTH_SHORT).show();
+                    for(int i=0; i<count_of_items; i++) {
+                        if (mFileCapture[i]== null) {
+                            initialFileUpload(i, mFileCaptured.toString());
+                            break;
+                        }
+                    }
+
+                    //dh.inserUploadtData(mFileCapture.toString());
 
                     /*for(int i=0; i<count_of_items; i++) {
                         if(uploadSedangBerlangsung[i]==false) {
@@ -394,7 +409,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
     void initialFileUpload(int index_of_items, String source) {
         pbVideoUpload.setProgress(0);
         pbVideoUpload.setVisibility(View.VISIBLE);
-        stVideoUpload.setVisibility(View.GONE);
+        stVideoUpload.setVisibility(View.VISIBLE);
 
         mFileCapture[index_of_items]   = Uri.parse(source);
         mHandlerUpload[index_of_items] = new Handler();
@@ -409,12 +424,27 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }
     }
 
-    public void checkAntrianUpload() throws IOException {
+    /*public void checkAntrianUpload() throws IOException {
 
         mHandlerCekAntrian.post(new Runnable() {
             @Override
             public void run() {
                 mHandlerCekAntrian.removeCallbacks(this);
+                dh.deleteUploadData();
+                ArrayList<String> data = dh.getUploadData();
+                for (String nama_file: data) {
+                    boolean doUpload = true;
+                    for(int i=0; i<count_of_items; i++) {
+                        if (mFileCapture[i].toString().equalsIgnoreCase(nama_file)) {
+                            doUpload = false;
+                            break;
+                        }
+                    }
+                    if(doUpload) {
+                        initialFileUpload(, nama_file);
+                    }
+                }
+
 
 
 
@@ -430,9 +460,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 }
             }
         });
-    }
-
-
+    }*/
 
     public void uploadChuckFile_(File file, String destination, String filename, String ext, int start, int position) throws IOException {
 
@@ -500,23 +528,29 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                 Log.e("PGBARBAR", i+" % ");
                 pbVideoUpload.setProgress(persen);
+                stVideoUpload.setText(i+" % ");
                 if (status == -1) {
                     //error
-                    status_upload[position] = -1;
+
                     pbVideoUpload.setVisibility(View.GONE);
                     stVideoUpload.setVisibility(View.VISIBLE);
                     stVideoUpload.setText(info);
                 } else if (end == size) {
                     //DONE
-                    status_upload[position] = 1;
+
                     pbVideoUpload.setVisibility(View.GONE);
-                    namefile[position] = name;
+                    stVideoUpload.setVisibility(View.GONE);
+
+                    mFileCapture[position] = null;
+                    mHandlerUpload[position] = new Handler();
+                    //dh.updateUploadData(mFileCapture[position].toString());
+
                 } else {
                     try {
                         uploadChuckFile_(file, destination, filename, ext, end, position);
                     } catch (IOException e) {
                         e.printStackTrace();
-                        status_upload[position] = -1;
+                        //status_upload[position] = -1;
                         pbVideoUpload.setVisibility(View.GONE);
                         stVideoUpload.setVisibility(View.VISIBLE);
                         stVideoUpload.setText(e.getMessage());
@@ -527,7 +561,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             @Override
             public void onFailure(@NonNull Call<ResponseProcessUpload> call, @NonNull Throwable e) {
                 e.printStackTrace();
-                status_upload[position] = -1;
+                //status_upload[position] = -1;
                 pbVideoUpload.setVisibility(View.GONE);
                 stVideoUpload.setVisibility(View.VISIBLE);
                 stVideoUpload.setText(e.getMessage());

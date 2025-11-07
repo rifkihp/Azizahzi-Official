@@ -32,24 +32,33 @@ public class DatabaseHandler extends SQLiteOpenHelper {
 		SQLiteDatabase db = this.getWritableDatabase();
 		
 		//db.execSQL("DROP TABLE IF EXISTS " + TABLE_UPLOAD);
-		db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_UPLOAD + "(nama_file TEXT)");
+		db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_UPLOAD + "(nama_file TEXT, status_hapus TEXT)");
 		db.close();
 	}
 
 	public void inserUploadtData(String nama_file) {
-
 		SQLiteDatabase db = this.getWritableDatabase();
 		ContentValues values = new ContentValues();
-		values.put("nama_file", nama_file);
-		db.insert(TABLE_UPLOAD, null, values);
+        values.put("nama_file", nama_file);
+        values.put("status_hapus", "N");
+        db.insert(TABLE_UPLOAD, null, values);
 		db.close();
 	}
 
-	public void deleteUploadData(String nama_file) {
+	public void deleteUploadData() {
 		SQLiteDatabase db = this.getWritableDatabase();
-		db.delete(TABLE_UPLOAD, "nama_file=?", new String[] { nama_file });
+		db.delete(TABLE_UPLOAD, "status_hapus=?", new String[] { "Y" });
 		db.close();
 	}
+
+    public void updateUploadData(String nama_file) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("nama_file", nama_file);
+        values.put("status_hapus", "Y");
+        db.update(TABLE_UPLOAD, values, "nama_file=?", new String[] { nama_file });
+        db.close();
+    }
 
     public ArrayList<String> getUploadData() {
 
