@@ -4,13 +4,31 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    tools:context=".MainActivity"
+    tools:context=".VideoCaptureActivity"
     android:keepScreenOn="true">
 
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <ProgressBar
+        android:id="@+id/pbVideoUpload"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="5dp"
+        android:max="100"
+        style="@style/Widget.AppCompat.ProgressBar.Horizontal"/>
+
+    <TextView
+        android:id="@+id/stVideoUpload"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:text="Message error upload."
+        android:textSize="@dimen/text"
+        android:textColor="@color/red"
+        android:textStyle="italic"
+        android:gravity="center_vertical" />
 
     <ImageButton
         android:layout_width="60sp"

@@ -20,7 +20,7 @@ public interface RestApi {
     );
 
     @Multipart
-    @POST("order/uploadVideoPacking")
+    @POST("upload.php")
     Call<ResponseProcessUpload> uploadVideoPacking(
             @Part MultipartBody.Part ax_file_input,
             @Part("ax-file-path") RequestBody ax_file_path,

@@ -21,6 +21,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -45,9 +46,14 @@ import androidx.core.content.ContextCompat;
 
 import com.example.qrcode_videopacking.data.RestApi;
 import com.example.qrcode_videopacking.data.RetroFit;
+import com.example.qrcode_videopacking.libs.DatabaseHandler;
+import com.example.qrcode_videopacking.libs.FileInformation;
+import com.example.qrcode_videopacking.libs.GalleryFilePath;
+import com.example.qrcode_videopacking.model.ResponseProcessUpload;
 import com.example.qrcode_videopacking.model.ResponseSaveRecord;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.Console;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -99,19 +105,18 @@ public class VideoCaptureActivity extends AppCompatActivity {
     Context context;
     Dialog dialog_loading;
 
+    DatabaseHandler dh;
 
     //UPLOAD FILE
 
     int count_of_items = 1;
-    int index_of_items = 0;
     Uri[] mFileCapture = new Uri[count_of_items];
-    int[] status_upload = new int[count_of_items]; //0:on Proses, 1:success, -1: gagal;
     Handler[] mHandlerUpload = new Handler[count_of_items];
 
-    String[] upload_titles = new String[] {"Video Packing"};
-    String[] pathfile = new String[count_of_items];
+    ProgressBar pbVideoUpload;
+    TextView stVideoUpload;
 
-    String[] namefile = new String[count_of_items];
+    Handler mHandlerCekAntrian = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -124,16 +129,13 @@ public class VideoCaptureActivity extends AppCompatActivity {
         builder.detectFileUriExposure();
 
         setContentView(R.layout.activity_video_capture);
-
-        for(int i=0; i<count_of_items; i++) {
-            mFileCapture[i] = null;
-            status_upload[i] = 0;
-            mHandlerUpload[i] = new Handler();
-            pathfile[i] = "";
-            namefile[i] = "";
-        }
-
+        pbVideoUpload = findViewById(R.id.pbVideoUpload);
+        stVideoUpload = findViewById(R.id.stVideoUpload);
+        
         context = VideoCaptureActivity.this;
+        dh = new DatabaseHandler(context);
+        dh.createTable();
+
         dialog_loading = new Dialog(context);
         dialog_loading.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog_loading.setCancelable(false);
@@ -209,7 +211,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-        waitToStopCountDownTimer = new CountDownTimer(3000, 1000) { // 30 seconds, 1-second intervals
+        waitToStopCountDownTimer = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
             }
 
@@ -262,10 +264,21 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 capture.setEnabled(true);
             } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
                 if (!((VideoRecordEvent.Finalize) videoRecordEvent).hasError()) {
-                    String msg = "Video capture succeeded: " + ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
+                    Uri mFileCapture = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
+                    String msg = "Video capture succeeded: " + mFileCapture;
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+                    dh.inserUploadtData(mFileCapture.toString());
 
-                    RequestBody noresi       = RequestBody.create(MediaType.parse("text/plain"), qrcode);
+                    /*for(int i=0; i<count_of_items; i++) {
+                        if(uploadSedangBerlangsung[i]==false) {
+                            uploadSedangBerlangsung[i] = true;
+                            setUploadResult(i, mFileCapture);
+
+                            break;
+                        }
+                    }*/
+
+                    /*RequestBody noresi       = RequestBody.create(MediaType.parse("text/plain"), qrcode);
                     RequestBody videopacking = RequestBody.create(MediaType.parse("text/plain"), video_packing+".mp4");
 
                     openDialogLoading();
@@ -286,7 +299,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                             dialog_loading.dismiss();
                             Toast.makeText(VideoCaptureActivity.this,"GAGAL SIMPAN DATA!",Toast.LENGTH_SHORT).show();
                         }
-                    });
+                    });*/
+
 
                 } else {
                     recording.close();
@@ -294,6 +308,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     String msg = "Error: " + ((VideoRecordEvent.Finalize) videoRecordEvent).getError();
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
                 }
+
+
                 waitToStartCountDownTimer.start();
                 currentRecordCountDownTimer.cancel();
                 mp_stop.start();
@@ -375,14 +391,40 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
-    public void uploadChuckFile_(File file, String destination, String filename, String ext, int start, ProgressBar pgbar, int position) throws IOException {
+    void initialFileUpload(int index_of_items, String source) {
+        pbVideoUpload.setProgress(0);
+        pbVideoUpload.setVisibility(View.VISIBLE);
+        stVideoUpload.setVisibility(View.GONE);
 
-        mHandlerUpload[position].post(new Runnable() {
+        mFileCapture[index_of_items]   = Uri.parse(source);
+        mHandlerUpload[index_of_items] = new Handler();
+
+        try {
+            File file  = new File(mFileCapture[index_of_items].toString());
+            String ext = getFileExtension(file.getName());
+            String des = "./uploads/video_packing";
+            uploadChuckFile_(file, des, file.getName(), ext, 0, index_of_items);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void checkAntrianUpload() throws IOException {
+
+        mHandlerCekAntrian.post(new Runnable() {
             @Override
             public void run() {
-                mHandlerUpload[position].removeCallbacks(this);
+                mHandlerCekAntrian.removeCallbacks(this);
+
+
+
+
                 try {
+
+
                     uploadChuckFile(file, destination, filename, ext, start, pgbar, position);
+
+
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -390,7 +432,25 @@ public class VideoCaptureActivity extends AppCompatActivity {
         });
     }
 
-    public void uploadChuckFile(File file, String destination, String filename, String ext, int start, ProgressBar pgbar, int position) throws IOException {
+
+
+    public void uploadChuckFile_(File file, String destination, String filename, String ext, int start, int position) throws IOException {
+
+        mHandlerUpload[position].post(new Runnable() {
+            @Override
+            public void run() {
+                mHandlerUpload[position].removeCallbacks(this);
+                try {
+                    uploadChuckFile(file, destination, filename, ext, start, position);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+    }
+
+    public void uploadChuckFile(File file, String destination, String filename, String ext, int start, int position) throws IOException {
         FileInputStream f = new FileInputStream(file.getAbsolutePath());
 
         final int bytes_per_chunk = 1*1024*1024; // == 1MB
@@ -418,7 +478,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
         RequestBody ax_last_chunk = RequestBody.create(MediaType.parse("text/plain"), end == size ? "true" : "false");
 
         RestApi api = RetroFit.getInstanceRetrofit();
-        Call<ResponseUploadDokumen> uploadDokumenCall = api.upload(
+        Call<ResponseProcessUpload> uploadDokumenCall = api.uploadVideoPacking(
                 ax_file_input,
                 ax_file_path,
                 ax_allow_ext,
@@ -428,9 +488,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 ax_last_chunk
         );
 
-        uploadDokumenCall.enqueue(new Callback<ResponseUploadDokumen>() {
+        uploadDokumenCall.enqueue(new Callback<>() {
             @Override
-            public void onResponse(@NonNull Call<ResponseUploadDokumen> call, @NonNull Response<ResponseUploadDokumen> response) {
+            public void onResponse(@NonNull Call<ResponseProcessUpload> call, @NonNull Response<ResponseProcessUpload> response) {
                 int status = response.body().getStatus();
                 String info = response.body().getInfo();
                 String name = response.body().getName();
@@ -439,42 +499,38 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 int persen = (int) i;
 
                 Log.e("PGBARBAR", i+" % ");
-                pgbar.setProgress(persen);
+                pbVideoUpload.setProgress(persen);
                 if (status == -1) {
                     //error
                     status_upload[position] = -1;
-                    UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
-                    UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
-                    UploadDokumenUtamaFragment.tvStatus_uploads[position].setVisibility(View.VISIBLE);
-                    UploadDokumenUtamaFragment.tvStatus_uploads[position].setText(info);
+                    pbVideoUpload.setVisibility(View.GONE);
+                    stVideoUpload.setVisibility(View.VISIBLE);
+                    stVideoUpload.setText(info);
                 } else if (end == size) {
                     //DONE
                     status_upload[position] = 1;
-                    UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
-                    UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
-                    UploadDokumenUtamaFragment.etFile_uploads[position].setText(name);
+                    pbVideoUpload.setVisibility(View.GONE);
                     namefile[position] = name;
                 } else {
                     try {
-                        uploadChuckFile_(file, destination, filename, ext, end, pgbar, position);
+                        uploadChuckFile_(file, destination, filename, ext, end, position);
                     } catch (IOException e) {
                         e.printStackTrace();
                         status_upload[position] = -1;
-                        UploadDokumenUtamaFragment.btFile_uploads[position].setVisibility(View.VISIBLE);
-                        UploadDokumenUtamaFragment.pbFile_uploads[position].setVisibility(View.GONE);
-                        UploadDokumenUtamaFragment.tvStatus_uploads[position].setVisibility(View.VISIBLE);
-                        UploadDokumenUtamaFragment.tvStatus_uploads[position].setText(e.getMessage());
+                        pbVideoUpload.setVisibility(View.GONE);
+                        stVideoUpload.setVisibility(View.VISIBLE);
+                        stVideoUpload.setText(e.getMessage());
                     }
                 }
             }
 
             @Override
-            public void onFailure(@NonNull Call<ResponseUploadDokumen> call, @NonNull Throwable t) {
-                t.printStackTrace();
-
+            public void onFailure(@NonNull Call<ResponseProcessUpload> call, @NonNull Throwable e) {
+                e.printStackTrace();
                 status_upload[position] = -1;
-                //error
-                showInformationDialog("Proses upload Dokumen Gagal.", false);
+                pbVideoUpload.setVisibility(View.GONE);
+                stVideoUpload.setVisibility(View.VISIBLE);
+                stVideoUpload.setText(e.getMessage());
             }
         });
     }
@@ -497,5 +553,20 @@ public class VideoCaptureActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         service.shutdown();
+    }
+
+    public static String getFileExtension(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return "";
+        }
+
+        int dotIndex = fileName.lastIndexOf('.');
+
+        // Handle cases with no extension or where the dot is the last character
+        if (dotIndex == -1 || dotIndex == fileName.length() - 1) {
+            return "";
+        } else {
+            return fileName.substring(dotIndex + 1);
+        }
     }
 }
