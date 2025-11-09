@@ -64,7 +64,7 @@ public class DatabaseHandler extends SQLiteOpenHelper {
 
         ArrayList<String> result = new ArrayList<>();
         try {
-            String sql = "SELECT * FROM " + TABLE_UPLOAD + " ORDER BY nama_file ASC LIMIT 0, 10";
+            String sql = "SELECT * FROM " + TABLE_UPLOAD + " WHERE status_hapus='N' ORDER BY nama_file ASC LIMIT 0, 1";
             SQLiteDatabase db = this.getReadableDatabase();
             Cursor cursor = db.rawQuery(sql, null);
             if(cursor.getCount() > 0) {

@@ -13,6 +13,7 @@
         android:layout_height="match_parent" />
 
     <ProgressBar
+        android:visibility="gone"
         android:id="@+id/pbVideoUpload"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
@@ -21,14 +22,27 @@
         style="@style/Widget.AppCompat.ProgressBar.Horizontal"/>
 
     <TextView
+        android:visibility="gone"
         android:id="@+id/stVideoUpload"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:text="Message error upload."
-        android:textSize="@dimen/text"
+        android:layout_height="wrap_content"
+        android:textSize="@dimen/texttitle"
         android:textColor="@color/red"
         android:textStyle="italic"
-        android:gravity="center_vertical" />
+        android:gravity="center"
+        android:background="@color/cardview_dark_background" />
+
+
+    <Chronometer
+        android:visibility="gone"
+        android:id="@+id/simpleChronometer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-light"
+        android:layout_above="@+id/capture"
+        android:gravity="center"
+        android:textColor="#9E9E9E"
+        android:textSize="50sp"/>
 
     <ImageButton
         android:layout_width="60sp"
