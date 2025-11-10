@@ -294,7 +294,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             @Override
             public void run() {
                 // Simulate a long-running background task
-                performHeavyOperation();
+
 
                 // Update the UI on the main thread using runOnUiThread
                 runOnUiThread(new Runnable() {
@@ -309,20 +309,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
         // Start the background thread
         backgroundThread.start();
     }
-
-    private fileUpload performHeavyOperation() {
-        try {
-            // Simulate work, e.g., network request, database query, heavy computation
-            Thread.sleep(3000); // Sleep for 3 seconds
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return "Task interrupted!";
-        }
-        return "Background task completed!";
-    }
-
-
-
+    
     private void resetView() {
         String formattedTime = String.format("%02d:%02d:%02d", 0, 0, 0);
         timer.setText(formattedTime);
