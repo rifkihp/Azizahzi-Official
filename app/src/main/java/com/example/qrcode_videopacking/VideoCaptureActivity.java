@@ -125,6 +125,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     CountDownTimer waitToStartUpload;
 
+    Handler mainHandler; // Used to post updates to the UI thread
+
     Chronometer timer;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -143,10 +145,11 @@ public class VideoCaptureActivity extends AppCompatActivity {
             insertDummyContactWrapper();
         }*/
 
-
-        timer              = findViewById(R.id.simpleChronometer);
+        timer         = findViewById(R.id.simpleChronometer);
         pbVideoUpload = findViewById(R.id.pbVideoUpload);
         stVideoUpload = findViewById(R.id.stVideoUpload);
+        mainHandler   = new Handler(Looper.getMainLooper()); // Initialize Handler with the main looper
+
 
         timer.setOnChronometerTickListener(new Chronometer.OnChronometerTickListener() {
             @Override
@@ -288,27 +291,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
         waitToStartUpload.start();
     }
 
-    private void startBackgroundTask() {
-        // Create a new Thread
-        Thread backgroundThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                // Simulate a long-running background task
 
-
-                // Update the UI on the main thread using runOnUiThread
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        resultTextView.setText(result);
-                    }
-                });
-            }
-        });
-
-        // Start the background thread
-        backgroundThread.start();
-    }
     
     private void resetView() {
         String formattedTime = String.format("%02d:%02d:%02d", 0, 0, 0);
@@ -481,6 +464,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
     }
 
     void initialFileUpload(int index_of_items, String source) {
+
         pbVideoUpload.setProgress(0);
         pbVideoUpload.setVisibility(View.VISIBLE);
         stVideoUpload.setVisibility(View.VISIBLE);
@@ -499,9 +483,62 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }
     }
 
-    public void uploadChuckFile_(File file, String destination, String filename, String ext, int start, int position) throws IOException {
 
-        mHandlerUpload[position].post(new Runnable() {
+
+
+    private void startBackgroundTask(File file, String destination, String filename, String ext, int start, int position) {
+
+        // Create a new Thread
+        Thread backgroundThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                // Simulate a long-running background task
+                try {
+                    uploadChuckFile(file, destination, filename, ext, start, position);
+                } catch (IOException e) {
+                    // Update the UI on the main thread using runOnUiThread
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            stVideoUpload.setText(e.getMessage());
+                        }
+                    });
+                }
+            }
+        });
+
+        // Start the background thread
+        backgroundThread.start();
+    }
+
+
+    void uploadChuckFile_(File file, String destination, String filename, String ext, int start, int position) throws IOException {
+
+
+// Create a new Thread
+        Thread backgroundThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                // Simulate a long-running background task
+                try {
+                    uploadChuckFile(file, destination, filename, ext, start, position);
+                } catch (IOException e) {
+                    // Update the UI on the main thread using runOnUiThread
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            stVideoUpload.setText(e.getMessage());
+                        }
+                    });
+                }
+            }
+        });
+
+        // Start the background thread
+        backgroundThread.start();
+
+
+        /*mHandlerUpload[position].post(new Runnable() {
             @Override
             public void run() {
                 mHandlerUpload[position].removeCallbacks(this);
@@ -513,7 +550,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     e.printStackTrace();
                 }
             }
-        });
+        });*/
+        
 
     }
 
