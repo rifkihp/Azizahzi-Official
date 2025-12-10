@@ -71,7 +71,7 @@ public class RetroFit {
     }
 
     private static Retrofit getRetrofit() {
-        String base_url = CommonUtilities.SERVER_URL+"/";
+        String base_url = CommonUtilities.SERVER_URL;
 
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
 

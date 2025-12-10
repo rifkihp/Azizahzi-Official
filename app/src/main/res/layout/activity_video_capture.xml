@@ -12,25 +12,59 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <ProgressBar
-        android:visibility="gone"
-        android:id="@+id/pbVideoUpload"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="5dp"
-        android:max="100"
-        style="@style/Widget.AppCompat.ProgressBar.Horizontal"/>
-
-    <TextView
-        android:visibility="gone"
-        android:id="@+id/stVideoUpload"
+    <RelativeLayout
+        android:id="@+id/panelUpload"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="@dimen/texttitle"
-        android:textColor="@color/red"
-        android:textStyle="italic"
-        android:gravity="center"
-        android:background="@color/cardview_dark_background" />
+        android:background="@drawable/dialog_background"
+        android:orientation="horizontal"
+        android:layout_above="@+id/capture"
+        android:padding="10dp"
+        android:layout_margin="20dp" >
+
+        <TextView
+            android:id="@+id/titleVideoUpload"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/red"
+            android:text="@string/upload" />
+
+
+        <ProgressBar
+            android:id="@+id/pbVideoUpload"
+            android:layout_below="@+id/titleVideoUpload"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="5dp"
+            android:max="100"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_below="@id/pbVideoUpload">
+
+
+            <TextView
+                android:id="@+id/stVideoUpload"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:textColor="@color/red"
+                android:text="@string/_100" />
+
+            <TextView
+                android:id="@+id/stAllFiles"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/red"
+                android:text="@string/_1_1_files" />
+        </LinearLayout>
+
+
+
+    </RelativeLayout>
 
 
     <Chronometer

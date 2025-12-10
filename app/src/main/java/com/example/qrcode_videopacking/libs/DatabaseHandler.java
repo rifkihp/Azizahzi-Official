@@ -51,12 +51,17 @@ public class DatabaseHandler extends SQLiteOpenHelper {
 		db.close();
 	}
 
-    public void updateUploadData(String nama_file) {
+    public void deleteUploadData(String source) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete(TABLE_UPLOAD, "nama_file=?", new String[] { source });
+        db.close();
+    }
+
+    public void updateUploadData(String source) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
-        values.put("nama_file", nama_file);
         values.put("status_hapus", "Y");
-        db.update(TABLE_UPLOAD, values, "nama_file=?", new String[] { nama_file });
+        db.update(TABLE_UPLOAD, values, "nama_file=?", new String[] { source });
         db.close();
     }
 

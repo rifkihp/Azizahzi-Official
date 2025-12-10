@@ -1,30 +1,28 @@
 package com.example.qrcode_videopacking;
 
 import android.Manifest;
-import android.app.Dialog;
+import android.annotation.SuppressLint;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CountDownTimer;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
+import android.os.Environment;
 import android.os.StrictMode;
 import android.os.SystemClock;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
-import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Chronometer;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -48,28 +46,26 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback;
 import com.example.qrcode_videopacking.data.RestApi;
 import com.example.qrcode_videopacking.data.RetroFit;
 import com.example.qrcode_videopacking.libs.DatabaseHandler;
 import com.example.qrcode_videopacking.libs.GalleryFilePath;
-import com.example.qrcode_videopacking.model.ResponseProcessUpload;
-import com.example.qrcode_videopacking.model.fileUpload;
+import com.example.qrcode_videopacking.model.ResponseCheckBeforeRecord;
+import com.example.qrcode_videopacking.model.ResponseUploadChunkFile;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -78,8 +74,11 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
+import com.arthenica.ffmpegkit.ReturnCode;
+
 public class VideoCaptureActivity extends AppCompatActivity {
-    final private int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 124;
     ExecutorService service;
     Recording recording = null;
     VideoCapture<Recorder> videoCapture = null;
@@ -96,43 +95,73 @@ public class VideoCaptureActivity extends AppCompatActivity {
     CountDownTimer currentRecordCountDownTimer;
     CountDownTimer waitToStartCountDownTimer;
     CountDownTimer waitToStopCountDownTimer;
+    CountDownTimer waitToCloseDialogLoadingCountDownTimer;
     MediaPlayer mp_start;
     MediaPlayer mp_stop;
     MediaPlayer mp_tick;
     MediaPlayer mp_warn;
+    int count_of_files = 5;
+    int[] progress_upload_file = new int[count_of_files];
     boolean isRecord = false;
     boolean prosesStop = false;
     long maxDuration = 600000;
     int detik = 0;
-
     boolean waitToStart = false;
-
     boolean waitToStop  = false;
-
     Context context;
-    Dialog dialog_loading;
-
     DatabaseHandler dh;
-
-    //UPLOAD FILE
-
-    int count_of_items = 1;
-    Uri[] mFileCapture = new Uri[count_of_items];
-    Handler[] mHandlerUpload = new Handler[count_of_items];
-
     ProgressBar pbVideoUpload;
     TextView stVideoUpload;
+    TextView stAllFiles;
 
-    CountDownTimer waitToStartUpload;
-
-    Handler mainHandler; // Used to post updates to the UI thread
+    RelativeLayout panelUpload;
 
     Chronometer timer;
+
+    private ActivityResultLauncher<Intent> storageActivityResultLauncher;
+
+    private void checkAndRequestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                storageActivityResultLauncher.launch(intent);
+            } else {
+                // All files access already granted
+                //Log.e("RERE", "All files access already granted");
+                //Toast.makeText(this, "All files access already granted", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            // For Android versions below 11, use traditional permissions
+            // ActivityCompat.requestPermissions(...)
+        }
+    }
+    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_video_capture);
+
+        storageActivityResultLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (Environment.isExternalStorageManager()) {
+                        // All files access granted
+                        Log.e("RERE", "All files access granted");
+                        Toast.makeText(this, "All files access granted", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // All files access denied
+                        Log.e("RERE", "All files access denied");
+                        Toast.makeText(this, "All files access denied", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        );
+
+        checkAndRequestStoragePermission();
 
         Objects.requireNonNull(getSupportActionBar()).hide();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -141,16 +170,13 @@ public class VideoCaptureActivity extends AppCompatActivity {
         StrictMode.setVmPolicy(builder.build());
         builder.detectFileUriExposure();
 
-        /*if (Build.VERSION.SDK_INT >= 23) {
-            insertDummyContactWrapper();
-        }*/
-
         timer         = findViewById(R.id.simpleChronometer);
         pbVideoUpload = findViewById(R.id.pbVideoUpload);
         stVideoUpload = findViewById(R.id.stVideoUpload);
-        mainHandler   = new Handler(Looper.getMainLooper()); // Initialize Handler with the main looper
+        stAllFiles    = findViewById(R.id.stAllFiles);
+        panelUpload   = findViewById(R.id.panelUpload);
 
-
+        panelUpload.setVisibility(View.GONE);
         timer.setOnChronometerTickListener(new Chronometer.OnChronometerTickListener() {
             @Override
             public void onChronometerTick(Chronometer chronometer) {
@@ -165,22 +191,10 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 chronometer.setText(formattedTime);
             }
         });
-
-        pbVideoUpload.setVisibility(View.GONE);
-        stVideoUpload.setVisibility(View.GONE);
-        for(int i=0; i<count_of_items; i++) {
-            mFileCapture[i] = null;
-            mHandlerUpload[i] = new Handler();
-        }
-
+        
         context = VideoCaptureActivity.this;
         dh = new DatabaseHandler(context);
         dh.createTable();
-
-        dialog_loading = new Dialog(context);
-        dialog_loading.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog_loading.setCancelable(false);
-        dialog_loading.setContentView(R.layout.loading_dialog);
 
         mp_start = MediaPlayer.create(this, R.raw.start);
         mp_stop = MediaPlayer.create(this, R.raw.stop);
@@ -196,8 +210,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 activityResultLauncher.launch(Manifest.permission.CAMERA);
             } else if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
-            } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                activityResultLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
             } else {
                 waitToStart = false;
                 captureVideo();
@@ -263,44 +275,65 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-        waitToStartUpload = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
+        waitToCloseDialogLoadingCountDownTimer = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
-                Log.e("CIMO", "CHECKPOINT CHECK UPLOAD ...");
-                if(mFileCapture[0]==null) {
-                    try {
-                        //delete complete upload file
-                        dh.deleteUploadData();
-
-                        //get file upload:
-                        ArrayList<String> data = dh.getUploadData();
-                        for (String nama_file : data) {
-                            Log.e("CIMO", "START UPLOAD FILE: " + nama_file);
-                            initialFileUpload(0, nama_file);
-                        }
-                    } catch (Exception e) {
-                        Log.e("CIMO", "Error: "+ e.getMessage());
-                    }
-                }
             }
 
             public void onFinish() {
-                waitToStartUpload.start();
+                panelUpload.setVisibility(View.GONE);
             }
         };
-        
-        waitToStartUpload.start();
+
+        for(int i=0; i<count_of_files; i++) {
+            progress_upload_file[i] = -1;
+        }
+
+        /*String filePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile.mp4";
+        File file = new File(filePath);
+        if(file.exists()) {
+            Log.e("CIMOY", filePath);
+            Uri mFileCaptured = Uri.fromFile(file);
+            uploadChuckFile_(mFileCaptured, 0, "JXJXJXJX");
+        } else {
+            Log.e("CIMOY", "zonkkkkk");
+        }*/
+
+
+        /*String inputFilePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile.mp4";
+        String outputFilePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile_output.mp4";
+        String[] command = {
+                "-i", inputFilePath,
+                "-vf", "scale=-1:720", // Scale to 720p height, auto-calculate width
+                "-preset", "veryfast", // Faster encoding preset
+                "-crf", "23", // Constant Rate Factor for quality (adjust as needed)
+                "-c:v", "libx264", // Video codec
+                "-c:a", "aac", // Audio codec
+                "-b:v", "150k", // Video bitrate
+                "-b:a", "48000", // Audio bitrate
+                "-y", // Overwrite output without prompt
+                outputFilePath
+        };
+
+        FFmpegKit.executeAsync("-y -i "+inputFilePath+" -s 480x320 -r 25 -vcodec mpeg4 -b:v 300k -b:a 48000 -ac 2 -ar 22050 "+outputFilePath, new FFmpegSessionCompleteCallback() {
+            @Override
+            public void apply(FFmpegSession session) {
+                if (ReturnCode.isSuccess(session.getReturnCode())) {
+                    // Compression successful
+                    Log.d("FFmpeg", "Video compressed successfully!");
+                } else if (ReturnCode.isCancel(session.getReturnCode())) {
+                    // Compression cancelled
+                    Log.d("FFmpeg", "Video compression cancelled.");
+                } else {
+                    // Compression failed
+                    Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
+                }
+            }
+        });*/
     }
 
-
-    
     private void resetView() {
         String formattedTime = String.format("%02d:%02d:%02d", 0, 0, 0);
         timer.setText(formattedTime);
-    }
-
-    public void openDialogLoading() {
-        dialog_loading.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        dialog_loading.show();
     }
 
     @Override
@@ -309,7 +342,11 @@ public class VideoCaptureActivity extends AppCompatActivity {
     }
 
     public void captureVideo() {
-        capture.setImageResource(R.drawable.round_stop_circle_24);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+
         Recording recording1 = recording;
         if (recording1 != null) {
             recording1.stop();
@@ -321,58 +358,68 @@ public class VideoCaptureActivity extends AppCompatActivity {
         prosesStop = false;
         mp_start.start();
         currentRecordCountDownTimer.start();
+        capture.setImageResource(R.drawable.round_stop_circle_24);
         video_packing = new SimpleDateFormat("yyyyMMdd_HHmmssSSS", Locale.getDefault()).format(System.currentTimeMillis()) + "_" + qrcode;
+        checkBeforeRecord(qrcode);
+
         ContentValues contentValues = new ContentValues();
         contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, video_packing);
         contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
         contentValues.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CameraX-Video");
-        
         MediaStoreOutputOptions options = new MediaStoreOutputOptions.Builder(getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
                 .setContentValues(contentValues).build();
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
         recording = videoCapture.getOutput().prepareRecording(this, options).withAudioEnabled().start(ContextCompat.getMainExecutor(this), videoRecordEvent -> {
             if (videoRecordEvent instanceof VideoRecordEvent.Start) {
                 capture.setEnabled(true);
             } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
                 if (!((VideoRecordEvent.Finalize) videoRecordEvent).hasError()) {
                     Uri mFileCaptured = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
-
-
-                    Toast.makeText(this, mFileCaptured.toString(), Toast.LENGTH_SHORT).show();
                     dh.inserUploadtData(mFileCaptured.toString());
+                    File file              = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCaptured)));
+                    String inputFilePath   = file.getAbsolutePath();
+                    String outputFilePath  = inputFilePath.substring(0, inputFilePath.length()-4)+"_compressed.mp4";
+                    String command         = "-i "+inputFilePath+" -r 24 -b:v 800000 -c:a aac -b:a 32k -ar 16000 -c:v libx264 "+outputFilePath;
 
-                    /*for(int i=0; i<count_of_items; i++) {
-                        if (mFileCapture[i]==null) {
-                            initialFileUpload(i, mFileCaptured.toString());
-                            break;
-                        }
-                    }*/
-
-                    /*RequestBody noresi       = RequestBody.create(MediaType.parse("text/plain"), qrcode);
-                    RequestBody videopacking = RequestBody.create(MediaType.parse("text/plain"), video_packing+".mp4");
-
-                    openDialogLoading();
-                    RestApi api = RetroFit.getInstanceRetrofit();
-                    Call<ResponseSaveRecord> saveVideoPackingCall = api.saveVideoPacking(noresi, videopacking);
-                    saveVideoPackingCall.enqueue(new Callback<>() {
+                    FFmpegKit.executeAsync(command, new FFmpegSessionCompleteCallback() {
                         @Override
-                        public void onResponse(@NonNull Call<ResponseSaveRecord> call, @NonNull Response<ResponseSaveRecord> response) {
-                            dialog_loading.dismiss();
-                            boolean success = Objects.requireNonNull(response.body()).getSuccess();
-                            if(success) {
-                                String message = Objects.requireNonNull(response.body()).getMessage();
-                                Toast.makeText(VideoCaptureActivity.this,message,Toast.LENGTH_SHORT).show();
+                        public void apply(FFmpegSession session) {
+
+                            if (ReturnCode.isSuccess(session.getReturnCode())) {
+                                // Compression successful
+                                int lastSpaceIndex = session.getCommand().lastIndexOf(" ");
+                                String output_file = session.getCommand().substring(lastSpaceIndex + 1);
+                                File file          = new File(output_file);
+                                String filename    = file.getName();
+                                String[] parts     = filename.split("_");
+                                String qrd         = (parts.length >= 2)?parts[1]:"";
+                                Uri mFileCompress  = Uri.fromFile(file);
+
+                                Log.d("CIMOY", filename);
+                                Log.d("qrd", qrd);
+                                for(int i=0; i<count_of_files; i++) {
+                                    if(progress_upload_file[i]==-1) {
+                                        progress_upload_file[i]=0;
+                                        uploadChuckFile_(mFileCompress, 0, qrd, i);
+                                        break;
+                                    }
+                                }
+
+                                //Toast.makeText(context, "Video compressed successfully!", Toast.LENGTH_SHORT).show();
+
+                            } else if (ReturnCode.isCancel(session.getReturnCode())) {
+                                // Compression cancelled
+                                Log.d("FFmpeg", "Video compression cancelled.");
+                                //Toast.makeText(context, "Video compression cancelled.", Toast.LENGTH_SHORT).show();
+
+                            } else {
+                                // Compression failed
+                                Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
+                                //Toast.makeText(context, "Video compression failed: " + session.getFailStackTrace(), Toast.LENGTH_SHORT).show();
+
                             }
                         }
-                        @Override
-                        public void onFailure(@NonNull Call<ResponseSaveRecord> call, @NonNull Throwable t) {
-                            dialog_loading.dismiss();
-                            Toast.makeText(VideoCaptureActivity.this,"GAGAL SIMPAN DATA!",Toast.LENGTH_SHORT).show();
-                        }
-                    });*/
+                    });
 
 
                 } else {
@@ -429,8 +476,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
                                 activityResultLauncher.launch(Manifest.permission.CAMERA);
                             } else if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                                 activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
-                            } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                                activityResultLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
                             } else {
                                 qrcode = _qrCode;
                                 captureVideo();
@@ -446,6 +491,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                 Recorder recorder = new Recorder.Builder()
                         .setQualitySelector(QualitySelector.from(Quality.LOWEST))
+                        .setTargetVideoEncodingBitRate(1600000)
                         .build();
                 videoCapture = VideoCapture.withOutput(recorder);
 
@@ -463,44 +509,164 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
-    void initialFileUpload(int index_of_items, String source) {
-
-        pbVideoUpload.setProgress(0);
-        pbVideoUpload.setVisibility(View.VISIBLE);
-        stVideoUpload.setVisibility(View.VISIBLE);
-
-        mFileCapture[index_of_items]   = Uri.parse(source);
-        mHandlerUpload[index_of_items] = new Handler();
-
-        try {
-            File file  = new File(mFileCapture[index_of_items]!=null?GalleryFilePath.getPath(context, mFileCapture[index_of_items]):"");
-            String ext = getFileExtension(file.getName());
-            String des = "./uploads/video_packing";
-            uploadChuckFile_(file, des, file.getName(), ext, 0, index_of_items);
-        } catch (IOException e) {
-            stVideoUpload.setText(e.getMessage());
-            throw new RuntimeException(e);
+    public static String getFileNameWithoutExtension(String fileNameWithExtension) {
+        int dotIndex = fileNameWithExtension.lastIndexOf('.');
+        if (dotIndex > 0) { // Check if a dot exists and is not at the beginning
+            return fileNameWithExtension.substring(0, dotIndex);
         }
+        return fileNameWithExtension; // No extension found, return original filename
     }
 
-
-
-
-    private void startBackgroundTask(File file, String destination, String filename, String ext, int start, int position) {
-
+    void uploadChuckFile_(Uri mFileCapture, int currentChunk, String tracking_number, int index_of_file) {
         // Create a new Thread
         Thread backgroundThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                // Simulate a long-running background task
-                try {
-                    uploadChuckFile(file, destination, filename, ext, start, position);
-                } catch (IOException e) {
-                    // Update the UI on the main thread using runOnUiThread
+
+                File file          = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCapture)));
+                String filename    = file.getName();
+                if(currentChunk==0) {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                            if(panelUpload.getVisibility()==View.GONE) {
+                                pbVideoUpload.setProgress(0);
+                                stVideoUpload.setText("");
+                                stAllFiles.setText("");
+
+                                pbVideoUpload.setVisibility(View.VISIBLE);
+                                stVideoUpload.setVisibility(View.VISIBLE);
+                                stAllFiles.setVisibility(View.VISIBLE);
+                                panelUpload.setVisibility(View.VISIBLE);
+                            }
+                        }
+                    });
+                }
+                // Simulate a long-running background task
+                try {
+                    FileInputStream f           = new FileInputStream(file.getAbsolutePath());
+                    final int size              = f.available(); // Size of original file
+                    final int chunkSize         = 1*1024*1024; // == 1MB
+                    final int totalChunks       = (int) Math.ceil((double) size / chunkSize);
+                    final String fileIdentifier = getFileNameWithoutExtension(filename); // Unique identifier
+                    final String fileExtension  = getFileExtension(filename);
+
+                    final int start = currentChunk * chunkSize;
+                    final int end = (start + chunkSize) >= size ? size : (start + chunkSize);
+
+                    Log.e("RERE", "INDEX " + currentChunk + " " + start + " sd. " + end + "~~~");
+                    byte[] data = new byte[size];  // Size of original file
+                    byte[] subData = new byte[chunkSize];  // 1MB Sized Array
+
+                    f.read(data); // Read The Data
+                    subData = Arrays.copyOfRange(data, start, end);
+                    RequestBody requestFile = RequestBody.create(MediaType.parse("*/*"), subData);
+
+                    // MultipartBody.Part is used to send also the actual file name
+                    MultipartBody.Part ax_file_chunk = MultipartBody.Part.createFormData("fileChunk",
+                            filename, // filename, this is optional
+                            requestFile
+                    );
+                    RequestBody ax_file_name       = RequestBody.create(MediaType.parse("text/plain"), filename);
+                    RequestBody ax_chunk_index     = RequestBody.create(MediaType.parse("text/plain"), String.valueOf(currentChunk));
+                    RequestBody ax_total_chunk     = RequestBody.create(MediaType.parse("text/plain"), String.valueOf(totalChunks));
+                    RequestBody ax_file_identifier = RequestBody.create(MediaType.parse("text/plain"), fileIdentifier);
+                    RequestBody ax_file_extension  = RequestBody.create(MediaType.parse("text/plain"), fileExtension);
+                    RequestBody ax_tracking_number = RequestBody.create(MediaType.parse("text/plain"), tracking_number);
+
+                    RestApi api = RetroFit.getInstanceRetrofit();
+                    Call<ResponseUploadChunkFile> uploadChunkFileCall = api.uploadChunkFile(
+                            ax_file_chunk,
+                            ax_file_name,
+                            ax_chunk_index,
+                            ax_total_chunk,
+                            ax_file_identifier,
+                            ax_file_extension,
+                            ax_tracking_number
+                    );
+
+                    uploadChunkFileCall.enqueue(new Callback<>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ResponseUploadChunkFile> call, @NonNull Response<ResponseUploadChunkFile> response) {
+
+                            String status  = Objects.requireNonNull(response.body()).getStatus();
+                            //String message = Objects.requireNonNull(response.body()).getMessage();
+
+                            if(status.equalsIgnoreCase("chunk_received")) {
+                                progress_upload_file[index_of_file] = (int) (100 * ((double) end/(double) size));
+
+                                double total    = 0;
+                                double progress = 0;
+                                for(int i=0; i<count_of_files; i++) {
+                                    if(progress_upload_file[i]>-1) {
+                                        total=total+100;
+                                        progress=progress+progress_upload_file[i];
+                                    }
+                                }
+
+                                int persentase = (int) (100 * (progress/total));
+                                int total_files = (int) (total/100);
+                                Log.e("CIMO", "file upload: " + persentase + " % ");
+                                uploadChuckFile_(mFileCapture, currentChunk+1, tracking_number, index_of_file);
+                                runOnUiThread(new Runnable() {
+                                    @SuppressLint("SetTextI18n")
+                                    @Override
+                                    public void run() {
+                                        pbVideoUpload.setProgress(persentase);
+                                        stVideoUpload.setText(persentase + " % ");
+                                        stAllFiles.setText(total_files + " files");
+                                    }
+                                });
+                            } else
+                            if(status.equalsIgnoreCase("success")) {
+                                //DONE
+                                dh.deleteUploadData(mFileCapture.toString());
+                                progress_upload_file[index_of_file] = -1;
+
+                                boolean hideDialog = IntStream.range(0, count_of_files).noneMatch(i -> progress_upload_file[i] > -1);
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        boolean hideDialog = true;
+                                        for(int i=0; i<count_of_files; i++) {
+                                            if(progress_upload_file[i]>-1) {
+                                                hideDialog = false;
+                                                break;
+                                            }
+                                        }
+                                        if(hideDialog) panelUpload.setVisibility(View.GONE);
+
+                                        Toast.makeText(context, "Upload File " + filename + " Berhasil!", Toast.LENGTH_SHORT).show();
+                                        file.delete();
+                                    }
+                                });
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(@NonNull Call<ResponseUploadChunkFile> call, @NonNull Throwable e) {
+                            Log.e("CIMO", "error file upload: " + e.getMessage());
+                            progress_upload_file[index_of_file] = -1;
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    pbVideoUpload.setVisibility(View.GONE);
+                                    stVideoUpload.setText(e.getMessage());
+                                    waitToCloseDialogLoadingCountDownTimer.start();
+                                }
+                            });
+                        }
+                    });
+                } catch (IOException e) {
+                    // Update the UI on the main thread using runOnUiThread
+                    Log.e("CIMO", "error file upload: " + e.getMessage());
+                    progress_upload_file[index_of_file] = -1;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            pbVideoUpload.setVisibility(View.GONE);
                             stVideoUpload.setText(e.getMessage());
+                            waitToCloseDialogLoadingCountDownTimer.start();
                         }
                     });
                 }
@@ -509,136 +675,34 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
         // Start the background thread
         backgroundThread.start();
+
     }
 
-
-    void uploadChuckFile_(File file, String destination, String filename, String ext, int start, int position) throws IOException {
-
-
-// Create a new Thread
+    void checkBeforeRecord(String tracking_number) {
+        // Create a new Thread
         Thread backgroundThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                // Simulate a long-running background task
-                try {
-                    uploadChuckFile(file, destination, filename, ext, start, position);
-                } catch (IOException e) {
-                    // Update the UI on the main thread using runOnUiThread
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            stVideoUpload.setText(e.getMessage());
-                        }
-                    });
-                }
+                RestApi api = RetroFit.getInstanceRetrofit();
+                Call<ResponseCheckBeforeRecord> splashCall = api.checkBeforeRecord(tracking_number);
+                splashCall.enqueue(new Callback<>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ResponseCheckBeforeRecord> call, @NonNull Response<ResponseCheckBeforeRecord> response) {
+                        //SUCCESS TRUE OR FALSE
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<ResponseCheckBeforeRecord> call, @NonNull Throwable t) {
+                        //ERROR FOUND
+
+
+                    }
+                });
             }
         });
 
         // Start the background thread
         backgroundThread.start();
-
-
-        /*mHandlerUpload[position].post(new Runnable() {
-            @Override
-            public void run() {
-                mHandlerUpload[position].removeCallbacks(this);
-                try {
-                    uploadChuckFile(file, destination, filename, ext, start, position);
-                } catch (IOException e) {
-
-                    stVideoUpload.setText(e.getMessage());
-                    e.printStackTrace();
-                }
-            }
-        });*/
-        
-
-    }
-
-    public void uploadChuckFile(File file, String destination, String filename, String ext, int start, int position) throws IOException {
-        FileInputStream f = new FileInputStream(file.getAbsolutePath());
-
-        final int bytes_per_chunk = 1*1024*1024; // == 1MB
-        final int size = f.available(); // Size of original file
-        final int end = (start + bytes_per_chunk) >= size ? size : (start + bytes_per_chunk);
-
-        byte[] data = new byte[size];  // Size of original file
-        byte[] subData = new byte[bytes_per_chunk];  // 4MB Sized Array
-
-        f.read(data); // Read The Data
-        subData = Arrays.copyOfRange(data, start, end);
-        RequestBody requestFile = RequestBody.create(MediaType.parse("*/*"), subData);
-
-        // MultipartBody.Part is used to send also the actual file name
-        MultipartBody.Part ax_file_input = MultipartBody.Part.createFormData("ax_file_input",
-                filename, // filename, this is optional
-                requestFile
-        );
-
-        RequestBody ax_file_path = RequestBody.create(MediaType.parse("text/plain"), destination);
-        RequestBody ax_allow_ext = RequestBody.create(MediaType.parse("text/plain"), ext);
-        RequestBody ax_file_name = RequestBody.create(MediaType.parse("text/plain"), filename);
-        RequestBody ax_max_file_size = RequestBody.create(MediaType.parse("text/plain"), "10G");
-        RequestBody ax_start_byte = RequestBody.create(MediaType.parse("text/plain"), String.valueOf(end));
-        RequestBody ax_last_chunk = RequestBody.create(MediaType.parse("text/plain"), end == size ? "true" : "false");
-
-        RestApi api = RetroFit.getInstanceRetrofit();
-        Call<ResponseProcessUpload> uploadDokumenCall = api.uploadVideoPacking(
-                ax_file_input,
-                ax_file_path,
-                ax_allow_ext,
-                ax_file_name,
-                ax_max_file_size,
-                ax_start_byte,
-                ax_last_chunk
-        );
-
-        uploadDokumenCall.enqueue(new Callback<>() {
-            @Override
-            public void onResponse(@NonNull Call<ResponseProcessUpload> call, @NonNull Response<ResponseProcessUpload> response) {
-                int status = response.body().getStatus();
-                String info = response.body().getInfo();
-                String name = response.body().getName();
-
-                double i = 100 * ((double) end/(double) size);
-                int persen = (int) i;
-
-                if (status == -1) {
-                    //error
-                    Log.e("CIMO", "error file upload: " + info + " % ");
-                    pbVideoUpload.setVisibility(View.GONE);
-                    stVideoUpload.setVisibility(View.VISIBLE);
-                    stVideoUpload.setText(info);
-                } else if (end == size) {
-                    //DONE
-                    dh.updateUploadData(mFileCapture[position].toString());
-                    pbVideoUpload.setVisibility(View.GONE);
-                    stVideoUpload.setVisibility(View.GONE);
-                    mFileCapture[position] = null;
-                    mHandlerUpload[position] = new Handler();
-                } else {
-                    Log.e("CIMO", "file upload: " + persen + " % ");
-                    pbVideoUpload.setProgress(persen);
-                    stVideoUpload.setText(persen + " % ");
-                    try {
-                        uploadChuckFile_(file, destination, filename, ext, end, position);
-                    } catch (IOException e) {
-                        Log.e("CIMO", "error file upload: " + e.getMessage());
-                        pbVideoUpload.setVisibility(View.GONE);
-                        stVideoUpload.setVisibility(View.VISIBLE);
-                        stVideoUpload.setText(e.getMessage());
-                    }
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ResponseProcessUpload> call, @NonNull Throwable e) {
-                Log.e("CIMO", "error file upload: " + e.getMessage());
-                pbVideoUpload.setVisibility(View.GONE);
-                stVideoUpload.setVisibility(View.VISIBLE);
-                stVideoUpload.setText(e.getMessage());
-            }
-        });
     }
 
     private void toggleFlash(Camera camera) {
@@ -673,99 +737,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
             return "";
         } else {
             return fileName.substring(dotIndex + 1);
-        }
-    }
-
-    private void insertDummyContactWrapper() {
-        List<String> permissionsNeeded = new ArrayList<>();
-        final List<String> permissionsList = new ArrayList<>();
-
-        if (!addPermission(permissionsList, android.Manifest.permission.INTERNET))
-            permissionsNeeded.add("INTERNET");
-        if (!addPermission(permissionsList, android.Manifest.permission.ACCESS_NETWORK_STATE))
-            permissionsNeeded.add("ACCESS_NETWORK_STATE");
-        if (!addPermission(permissionsList, android.Manifest.permission.WRITE_EXTERNAL_STORAGE))
-            permissionsNeeded.add("WRITE_EXTERNAL_STORAGE");
-        if (!addPermission(permissionsList, android.Manifest.permission.READ_EXTERNAL_STORAGE))
-            permissionsNeeded.add("READ_EXTERNAL_STORAGE");
-        if (!addPermission(permissionsList, android.Manifest.permission.CAMERA))
-            permissionsNeeded.add("CAMERA");
-        if (!addPermission(permissionsList, Manifest.permission.ACCESS_MEDIA_LOCATION))
-            permissionsNeeded.add("ACCESS_MEDIA_LOCATION");
-
-        if (permissionsList.size() > 0) {
-            if (permissionsNeeded.size() > 0) {
-                // Need Rationale
-                String message = "You need to grant access to " + permissionsNeeded.get(0);
-                for (int i = 1; i < permissionsNeeded.size(); i++)
-                    message = message + ", " + permissionsNeeded.get(i);
-
-                //showMessageOKCancel(message, new DialogInterface.OnClickListener() {
-                //@Override
-                //public void onClick(DialogInterface dialog, int which) {*/
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    requestPermissions(permissionsList.toArray(new String[permissionsList.size()]), REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
-                }
-                //}
-                //});
-                return;
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                requestPermissions(permissionsList.toArray(new String[permissionsList.size()]), REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
-            }
-            return;
-        }
-    }
-
-    private boolean addPermission(List<String> permissionsList, String permission) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionsList.add(permission);
-                // Check for Rationale Option
-                if (!shouldShowRequestPermissionRationale(permission))
-                    return false;
-            }
-        }
-        return true;
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-
-        switch (requestCode) {
-            case REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS: {
-                Map<String, Integer> perms = new HashMap<String, Integer>();
-                // Initial
-                perms.put(android.Manifest.permission.INTERNET, PackageManager.PERMISSION_GRANTED);
-                perms.put(android.Manifest.permission.ACCESS_NETWORK_STATE, PackageManager.PERMISSION_GRANTED);
-                perms.put(android.Manifest.permission.READ_EXTERNAL_STORAGE, PackageManager.PERMISSION_GRANTED);
-                perms.put(android.Manifest.permission.WRITE_EXTERNAL_STORAGE, PackageManager.PERMISSION_GRANTED);
-                perms.put(android.Manifest.permission.CAMERA, PackageManager.PERMISSION_GRANTED);
-                perms.put(android.Manifest.permission.ACCESS_MEDIA_LOCATION, PackageManager.PERMISSION_GRANTED);
-
-                // Fill with results
-                for (int i = 0; i < permissions.length; i++)
-                    perms.put(permissions[i], grantResults[i]);
-                // Check for ACCESS_FINE_LOCATION
-                if (perms.get(android.Manifest.permission.INTERNET) == PackageManager.PERMISSION_GRANTED
-                        && perms.get(android.Manifest.permission.ACCESS_NETWORK_STATE) == PackageManager.PERMISSION_GRANTED
-                        && perms.get(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-                        && perms.get(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-                        && perms.get(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                        && perms.get(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    // All Permissions Granted
-
-                    startCamera(cameraFacing);
-                    //Toast.makeText(context, "You Okay?", Toast.LENGTH_SHORT).show();
-
-                } else {
-                    // Permission Denied
-                    Toast.makeText(context, "Some Permission is Denied", Toast.LENGTH_SHORT).show();
-                }
-            }
-            break;
-            default:
-                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
     }
 }
