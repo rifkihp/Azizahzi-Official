@@ -376,52 +376,13 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 if (!((VideoRecordEvent.Finalize) videoRecordEvent).hasError()) {
                     Uri mFileCaptured = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
                     dh.inserUploadtData(mFileCaptured.toString());
-                    File file              = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCaptured)));
-                    String inputFilePath   = file.getAbsolutePath();
-                    String outputFilePath  = inputFilePath.substring(0, inputFilePath.length()-4)+"_compressed.mp4";
-                    String command         = "-i "+inputFilePath+" -r 24 -b:v 800000 -c:a aac -b:a 32k -ar 16000 -c:v libx264 "+outputFilePath;
-
-                    FFmpegKit.executeAsync(command, new FFmpegSessionCompleteCallback() {
-                        @Override
-                        public void apply(FFmpegSession session) {
-
-                            if (ReturnCode.isSuccess(session.getReturnCode())) {
-                                // Compression successful
-                                int lastSpaceIndex = session.getCommand().lastIndexOf(" ");
-                                String output_file = session.getCommand().substring(lastSpaceIndex + 1);
-                                File file          = new File(output_file);
-                                String filename    = file.getName();
-                                String[] parts     = filename.split("_");
-                                String qrd         = (parts.length >= 2)?parts[1]:"";
-                                Uri mFileCompress  = Uri.fromFile(file);
-
-                                Log.d("CIMOY", filename);
-                                Log.d("qrd", qrd);
-                                for(int i=0; i<count_of_files; i++) {
-                                    if(progress_upload_file[i]==-1) {
-                                        progress_upload_file[i]=0;
-                                        uploadChuckFile_(mFileCompress, 0, qrd, i);
-                                        break;
-                                    }
-                                }
-
-                                //Toast.makeText(context, "Video compressed successfully!", Toast.LENGTH_SHORT).show();
-
-                            } else if (ReturnCode.isCancel(session.getReturnCode())) {
-                                // Compression cancelled
-                                Log.d("FFmpeg", "Video compression cancelled.");
-                                //Toast.makeText(context, "Video compression cancelled.", Toast.LENGTH_SHORT).show();
-
-                            } else {
-                                // Compression failed
-                                Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
-                                //Toast.makeText(context, "Video compression failed: " + session.getFailStackTrace(), Toast.LENGTH_SHORT).show();
-
-                            }
+                    for(int i=0; i<count_of_files; i++) {
+                        if(progress_upload_file[i]==-1) {
+                            progress_upload_file[i]=0;
+                            compressFile_(mFileCaptured, qrcode, i);
+                            break;
                         }
-                    });
-
-
+                    }
                 } else {
                     recording.close();
                     recording = null;
@@ -516,6 +477,74 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }
         return fileNameWithExtension; // No extension found, return original filename
     }
+
+
+    void compressFile_(Uri mFileCapture, String qrcode, int index_of_file) {
+        // Create a new Thread
+        Thread backgroundThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if(panelUpload.getVisibility()==View.GONE) {
+                            pbVideoUpload.setProgress(0);
+                            stVideoUpload.setText("");
+                            stAllFiles.setText("");
+
+                            pbVideoUpload.setVisibility(View.VISIBLE);
+                            stVideoUpload.setVisibility(View.VISIBLE);
+                            stAllFiles.setVisibility(View.VISIBLE);
+                            panelUpload.setVisibility(View.VISIBLE);
+                        }
+                    }
+                });
+
+                File file              = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCapture)));
+                String inputFilePath   = file.getAbsolutePath();
+                String outputFilePath  = inputFilePath.substring(0, inputFilePath.length()-4)+"_compressed.mp4";
+                String command         = "-i "+inputFilePath+" -r 24 -b:v 800000 -c:a aac -b:a 32k -ar 16000 -c:v libx264 -preset fast "+outputFilePath;
+
+                FFmpegKit.executeAsync(command, new FFmpegSessionCompleteCallback() {
+                    @Override
+                    public void apply(FFmpegSession session) {
+
+                        if (ReturnCode.isSuccess(session.getReturnCode())) {
+                            // Compression successful
+                            int lastSpaceIndex = session.getCommand().lastIndexOf(" ");
+                            String output_file = session.getCommand().substring(lastSpaceIndex + 1);
+                            File file          = new File(output_file);
+                            String filename    = file.getName();
+                            Uri mFileCompress  = Uri.fromFile(file);
+
+                            Log.d("CIMOY", filename);
+                            Log.d("qrd", qrcode);
+                            uploadChuckFile_(mFileCompress, 0, qrcode, index_of_file);
+                            //Toast.makeText(context, "Video compressed successfully!", Toast.LENGTH_SHORT).show();
+
+                        } else if (ReturnCode.isCancel(session.getReturnCode())) {
+                            // Compression cancelled
+                            Log.d("FFmpeg", "Video compression cancelled.");
+                            //Toast.makeText(context, "Video compression cancelled.", Toast.LENGTH_SHORT).show();
+                            uploadChuckFile_(mFileCapture, 0, qrcode, index_of_file);
+                        } else {
+                            // Compression failed
+                            Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
+                            //Toast.makeText(context, "Video compression failed: " + session.getFailStackTrace(), Toast.LENGTH_SHORT).show();
+                            uploadChuckFile_(mFileCapture, 0, qrcode, index_of_file);
+                        }
+                    }
+                });
+            }
+        });
+
+        // Start the background thread
+        backgroundThread.start();
+
+    }
+
+
 
     void uploadChuckFile_(Uri mFileCapture, int currentChunk, String tracking_number, int index_of_file) {
         // Create a new Thread
