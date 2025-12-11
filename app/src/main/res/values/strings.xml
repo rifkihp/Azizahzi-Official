@@ -1,6 +1,7 @@
 <resources>
-    <string name="app_name">Azizahzi Official</string>
+    <string name="app_name">Packing Video</string>
     <string name="upload">Upload...</string>
+    <string name="compressing">Compressing...</string>
     <string name="_100">100%</string>
     <string name="_1_1_files">1/1 files</string>
 </resources>

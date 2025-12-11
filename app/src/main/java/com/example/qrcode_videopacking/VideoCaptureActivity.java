@@ -46,7 +46,10 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback;
+import com.arthenica.ffmpegkit.ReturnCode;
 import com.example.qrcode_videopacking.data.RestApi;
 import com.example.qrcode_videopacking.data.RetroFit;
 import com.example.qrcode_videopacking.libs.DatabaseHandler;
@@ -65,7 +68,6 @@ import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.stream.IntStream;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -73,10 +75,6 @@ import okhttp3.RequestBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-
-import com.arthenica.ffmpegkit.FFmpegKit;
-import com.arthenica.ffmpegkit.FFmpegSession;
-import com.arthenica.ffmpegkit.ReturnCode;
 
 public class VideoCaptureActivity extends AppCompatActivity {
     ExecutorService service;
@@ -95,7 +93,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
     CountDownTimer currentRecordCountDownTimer;
     CountDownTimer waitToStartCountDownTimer;
     CountDownTimer waitToStopCountDownTimer;
-    CountDownTimer waitToCloseDialogLoadingCountDownTimer;
+    CountDownTimer waitToCloseDialogUploading;
+    CountDownTimer waitToCloseDialogCompressing;
     MediaPlayer mp_start;
     MediaPlayer mp_stop;
     MediaPlayer mp_tick;
@@ -113,8 +112,11 @@ public class VideoCaptureActivity extends AppCompatActivity {
     ProgressBar pbVideoUpload;
     TextView stVideoUpload;
     TextView stAllFiles;
+    TextView ttlVideoUpload;
 
     RelativeLayout panelUpload;
+    RelativeLayout panelCompressing;
+    TextView ttlCompressing;
 
     Chronometer timer;
 
@@ -170,13 +172,18 @@ public class VideoCaptureActivity extends AppCompatActivity {
         StrictMode.setVmPolicy(builder.build());
         builder.detectFileUriExposure();
 
-        timer         = findViewById(R.id.simpleChronometer);
-        pbVideoUpload = findViewById(R.id.pbVideoUpload);
-        stVideoUpload = findViewById(R.id.stVideoUpload);
-        stAllFiles    = findViewById(R.id.stAllFiles);
-        panelUpload   = findViewById(R.id.panelUpload);
+        timer            = findViewById(R.id.simpleChronometer);
+        pbVideoUpload    = findViewById(R.id.pbVideoUpload);
+        stVideoUpload    = findViewById(R.id.stVideoUpload);
+        stAllFiles       = findViewById(R.id.stAllFiles);
+        panelUpload      = findViewById(R.id.panelUpload);
+        ttlVideoUpload   = findViewById(R.id.titleVideoUpload);
+        panelCompressing = findViewById(R.id.panelCompress);
+        ttlCompressing   = findViewById(R.id.titleCompressing);
 
         panelUpload.setVisibility(View.GONE);
+        panelCompressing.setVisibility(View.GONE);
+
         timer.setOnChronometerTickListener(new Chronometer.OnChronometerTickListener() {
             @Override
             public void onChronometerTick(Chronometer chronometer) {
@@ -275,7 +282,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-        waitToCloseDialogLoadingCountDownTimer = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
+        waitToCloseDialogUploading = new CountDownTimer(1000, 1000) { // 30 seconds, 1-second intervals
             public void onTick(long millisUntilFinished) {
             }
 
@@ -283,6 +290,16 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 panelUpload.setVisibility(View.GONE);
             }
         };
+
+        waitToCloseDialogCompressing = new CountDownTimer(3000, 1000) { // 30 seconds, 1-second intervals
+            public void onTick(long millisUntilFinished) {
+            }
+
+            public void onFinish() {
+                panelCompressing.setVisibility(View.GONE);
+            }
+        };
+
 
         for(int i=0; i<count_of_files; i++) {
             progress_upload_file[i] = -1;
@@ -297,38 +314,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
         } else {
             Log.e("CIMOY", "zonkkkkk");
         }*/
-
-
-        /*String inputFilePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile.mp4";
-        String outputFilePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile_output.mp4";
-        String[] command = {
-                "-i", inputFilePath,
-                "-vf", "scale=-1:720", // Scale to 720p height, auto-calculate width
-                "-preset", "veryfast", // Faster encoding preset
-                "-crf", "23", // Constant Rate Factor for quality (adjust as needed)
-                "-c:v", "libx264", // Video codec
-                "-c:a", "aac", // Audio codec
-                "-b:v", "150k", // Video bitrate
-                "-b:a", "48000", // Audio bitrate
-                "-y", // Overwrite output without prompt
-                outputFilePath
-        };
-
-        FFmpegKit.executeAsync("-y -i "+inputFilePath+" -s 480x320 -r 25 -vcodec mpeg4 -b:v 300k -b:a 48000 -ac 2 -ar 22050 "+outputFilePath, new FFmpegSessionCompleteCallback() {
-            @Override
-            public void apply(FFmpegSession session) {
-                if (ReturnCode.isSuccess(session.getReturnCode())) {
-                    // Compression successful
-                    Log.d("FFmpeg", "Video compressed successfully!");
-                } else if (ReturnCode.isCancel(session.getReturnCode())) {
-                    // Compression cancelled
-                    Log.d("FFmpeg", "Video compression cancelled.");
-                } else {
-                    // Compression failed
-                    Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
-                }
-            }
-        });*/
     }
 
     private void resetView() {
@@ -345,7 +330,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-
 
         Recording recording1 = recording;
         if (recording1 != null) {
@@ -488,15 +472,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if(panelUpload.getVisibility()==View.GONE) {
-                            pbVideoUpload.setProgress(0);
-                            stVideoUpload.setText("");
-                            stAllFiles.setText("");
-
-                            pbVideoUpload.setVisibility(View.VISIBLE);
-                            stVideoUpload.setVisibility(View.VISIBLE);
-                            stAllFiles.setVisibility(View.VISIBLE);
-                            panelUpload.setVisibility(View.VISIBLE);
+                        if(panelCompressing.getVisibility()==View.GONE) {
+                            ttlCompressing.setText(R.string.compressing);
+                            panelCompressing.setVisibility(View.VISIBLE);
                         }
                     }
                 });
@@ -504,7 +482,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 File file              = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCapture)));
                 String inputFilePath   = file.getAbsolutePath();
                 String outputFilePath  = inputFilePath.substring(0, inputFilePath.length()-4)+"_compressed.mp4";
-                String command         = "-i "+inputFilePath+" -r 24 -b:v 1000000 -c:a aac -b:a 32k -ar 16000 -c:v libx264 -preset medium "+outputFilePath;
+                String command         = "-i "+inputFilePath+" -r 24 -b:v 1000000 -c:a aac -b:a 64k -ar 24000 -c:v libx264 -preset medium "+outputFilePath;
 
                 FFmpegKit.executeAsync(command, new FFmpegSessionCompleteCallback() {
                     @Override
@@ -512,25 +490,46 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                         if (ReturnCode.isSuccess(session.getReturnCode())) {
                             // Compression successful
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    panelCompressing.setVisibility(View.GONE);
+                                }
+                            });
+
                             int lastSpaceIndex = session.getCommand().lastIndexOf(" ");
                             String output_file = session.getCommand().substring(lastSpaceIndex + 1);
                             File file          = new File(output_file);
                             String filename    = file.getName();
                             Uri mFileCompress  = Uri.fromFile(file);
-
-                            Log.d("CIMOY", filename);
-                            Log.d("qrd", qrcode);
                             uploadChuckFile_(mFileCompress, 0, qrcode, index_of_file);
                             //Toast.makeText(context, "Video compressed successfully!", Toast.LENGTH_SHORT).show();
 
                         } else if (ReturnCode.isCancel(session.getReturnCode())) {
                             // Compression cancelled
                             Log.d("FFmpeg", "Video compression cancelled.");
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    ttlCompressing.setText("Video compression cancelled.");
+                                }
+                            });
+                            waitToCloseDialogCompressing.start();
+
                             //Toast.makeText(context, "Video compression cancelled.", Toast.LENGTH_SHORT).show();
                             uploadChuckFile_(mFileCapture, 0, qrcode, index_of_file);
                         } else {
                             // Compression failed
                             Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    ttlCompressing.setText("Video compression failed.");
+                                }
+                            });
+
+                            waitToCloseDialogCompressing.start();
+
                             //Toast.makeText(context, "Video compression failed: " + session.getFailStackTrace(), Toast.LENGTH_SHORT).show();
                             uploadChuckFile_(mFileCapture, 0, qrcode, index_of_file);
                         }
@@ -543,8 +542,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
         backgroundThread.start();
 
     }
-
-
 
     void uploadChuckFile_(Uri mFileCapture, int currentChunk, String tracking_number, int index_of_file) {
         // Create a new Thread
@@ -652,7 +649,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
                                 dh.deleteUploadData(mFileCapture.toString());
                                 progress_upload_file[index_of_file] = -1;
 
-                                boolean hideDialog = IntStream.range(0, count_of_files).noneMatch(i -> progress_upload_file[i] > -1);
                                 runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {
@@ -681,7 +677,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                                 public void run() {
                                     pbVideoUpload.setVisibility(View.GONE);
                                     stVideoUpload.setText(e.getMessage());
-                                    waitToCloseDialogLoadingCountDownTimer.start();
+                                    waitToCloseDialogUploading.start();
                                 }
                             });
                         }
@@ -695,7 +691,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                         public void run() {
                             pbVideoUpload.setVisibility(View.GONE);
                             stVideoUpload.setText(e.getMessage());
-                            waitToCloseDialogLoadingCountDownTimer.start();
+                            waitToCloseDialogUploading.start();
                         }
                     });
                 }

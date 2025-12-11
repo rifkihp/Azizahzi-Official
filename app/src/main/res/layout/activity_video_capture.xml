@@ -13,6 +13,26 @@
         android:layout_height="match_parent" />
 
     <RelativeLayout
+        android:id="@+id/panelCompress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/dialog_background"
+        android:orientation="horizontal"
+        android:layout_above="@+id/panelUpload"
+        android:padding="10dp"
+        android:layout_margin="20dp" >
+
+        <TextView
+            android:id="@+id/titleCompressing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/red"
+            android:text="@string/compressing" />
+
+    </RelativeLayout>
+
+
+    <RelativeLayout
         android:id="@+id/panelUpload"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -28,7 +48,6 @@
             android:layout_height="wrap_content"
             android:textColor="@color/red"
             android:text="@string/upload" />
-
 
         <ProgressBar
             android:id="@+id/pbVideoUpload"
@@ -61,8 +80,6 @@
                 android:textColor="@color/red"
                 android:text="@string/_1_1_files" />
         </LinearLayout>
-
-
 
     </RelativeLayout>
 
