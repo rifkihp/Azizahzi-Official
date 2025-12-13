@@ -6,16 +6,22 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.StrictMode;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -34,6 +40,8 @@ import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.Preview;
+import androidx.camera.core.UseCaseGroup;
+import androidx.camera.effects.OverlayEffect;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.video.MediaStoreOutputOptions;
 import androidx.camera.video.Quality;
@@ -45,6 +53,7 @@ import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.media3.effect.TextureOverlay;
 
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
@@ -56,6 +65,7 @@ import com.example.qrcode_videopacking.libs.DatabaseHandler;
 import com.example.qrcode_videopacking.libs.GalleryFilePath;
 import com.example.qrcode_videopacking.model.ResponseCheckBeforeRecord;
 import com.example.qrcode_videopacking.model.ResponseUploadChunkFile;
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
@@ -63,6 +73,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -122,6 +133,17 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     private ActivityResultLauncher<Intent> storageActivityResultLauncher;
 
+    //----------- timer at record video
+    private Handler handler;
+    private long startTime = 0L;
+    private String timerText = "00:00:00";
+    private OverlayEffect overlayEffect;
+    private Paint textPaint;
+
+
+    private long startTimeMillis;
+    private boolean isRecording = false;
+
     private void checkAndRequestStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
@@ -139,7 +161,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
             // ActivityCompat.requestPermissions(...)
         }
     }
-    
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -171,6 +193,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
         StrictMode.VmPolicy.Builder builder = new StrictMode.VmPolicy.Builder();
         StrictMode.setVmPolicy(builder.build());
         builder.detectFileUriExposure();
+
+        handler  = new Handler(getMainLooper());
+
 
         timer            = findViewById(R.id.simpleChronometer);
         pbVideoUpload    = findViewById(R.id.pbVideoUpload);
@@ -300,7 +325,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-
         for(int i=0; i<count_of_files; i++) {
             progress_upload_file[i] = -1;
         }
@@ -387,8 +411,43 @@ public class VideoCaptureActivity extends AppCompatActivity {
     }
 
     public void startCamera(int cameraFacing) {
-        ListenableFuture<ProcessCameraProvider> processCameraProvider = ProcessCameraProvider.getInstance(this);
 
+        int targets = OverlayEffect.PREVIEW;
+        // Queue depth of 0 means we draw as soon as a frame is available
+        int queueDepth = 0;
+
+        overlayEffect = new OverlayEffect(targets, queueDepth, handler, null);
+
+        // Set the draw listener to define what to draw on each frame's canvas
+        overlayEffect.setOnDrawListener(frame -> {
+            Canvas canvas = frame.getOverlayCanvas();
+            // Clear the canvas first
+            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
+
+            // Example: Draw a simple green rectangle
+            Paint paint = new Paint();
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(45f);
+            paint.setAntiAlias(true); // Smooths the edges of the text
+
+            // Use frame.getSensorToBufferTransform() for accurate coordinate mapping if needed,
+            // but for simple screen-space overlays, you can draw directly
+            // canvas.setMatrix(frame.getSensorToBufferTransform());
+
+            float left = canvas.getWidth() * 0.23f;
+            float top = canvas.getHeight() * 0.05f; //* 0.25f;
+            float right = canvas.getWidth() * 0.75f;
+            float bottom = canvas.getHeight() * 0.75f;
+
+            //canvas.drawRect(left, top, right, bottom, paint);
+            canvas.drawText("TESTING", left, top, paint);
+
+            // Return true to signal that the canvas has been updated
+            return true;
+        });
+
+
+        ListenableFuture<ProcessCameraProvider> processCameraProvider = ProcessCameraProvider.getInstance(this);
         processCameraProvider.addListener(() -> {
             try {
                 ProcessCameraProvider cameraProvider = processCameraProvider.get();
@@ -436,23 +495,56 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                 Recorder recorder = new Recorder.Builder()
                         .setQualitySelector(QualitySelector.from(Quality.LOWEST))
-                        .setTargetVideoEncodingBitRate(1600000)
                         .build();
                 videoCapture = VideoCapture.withOutput(recorder);
 
+                // Build the use case group and apply the effect
+                UseCaseGroup useCaseGroup = new UseCaseGroup.Builder()
+                        .addUseCase(preview)
+                        .addUseCase(videoCapture)
+                        .addUseCase(imageAnalysis)
+                        // Add other use cases like ImageCapture or VideoCapture as needed
+                        .addEffect(overlayEffect) // Apply the effect here
+                        .build();
+
+
                 cameraProvider.unbindAll();
-
-                CameraSelector cameraSelector = new CameraSelector.Builder()
-                        .requireLensFacing(cameraFacing).build();
-
-                Camera camera = cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis, preview, videoCapture);
-
+                CameraSelector cameraSelector = new CameraSelector.Builder().requireLensFacing(cameraFacing).build();
+                Camera camera = cameraProvider.bindToLifecycle(this, cameraSelector, useCaseGroup);
                 toggleFlash.setOnClickListener(view -> toggleFlash(camera));
+
             } catch (ExecutionException | InterruptedException e) {
                 e.printStackTrace();
             }
         }, ContextCompat.getMainExecutor(this));
     }
+
+
+    private void drawTimer(Canvas canvas, int width, int height) {
+        long elapsedMillis = System.currentTimeMillis() - startTimeMillis;
+        int seconds = (int) (elapsedMillis / 1000);
+        int minutes = seconds / 60;
+        seconds = seconds % 60;
+        int milliseconds = (int) (elapsedMillis % 1000);
+
+        String timerText = String.format(Locale.getDefault(), "%02d:%02d.%03d", minutes, seconds, milliseconds);
+
+        Paint paint = new Paint();
+        paint.setColor(Color.RED);
+        paint.setTextSize(60f);
+        paint.setAntiAlias(true);
+
+        float x = (float) width / 2f - paint.measureText(timerText) / 2f;
+        float y = 100f; // Top of the screen
+
+        float centerX = width / 2f;
+        float centerY = height / 2f;
+        float halfWidth = 100f;
+        float halfHeight = 100f;
+
+        canvas.drawText(timerText, x, y, paint);
+    }
+
 
     public static String getFileNameWithoutExtension(String fileNameWithExtension) {
         int dotIndex = fileNameWithExtension.lastIndexOf('.');

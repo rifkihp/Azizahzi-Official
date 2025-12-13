@@ -78,11 +78,13 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.video)
-    implementation(libs.androidx.media3.effect)
-    implementation(libs.androidx.media3.exoplayer)
-
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
+    implementation(libs.androidx.camera.effects)
+
+    implementation(libs.androidx.media3.effect)
+    implementation(libs.androidx.media3.common)
 
     implementation(libs.ffmpeg.kit.full)
+
 }
