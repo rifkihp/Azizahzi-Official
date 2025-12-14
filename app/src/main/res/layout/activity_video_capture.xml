@@ -83,18 +83,6 @@
 
     </RelativeLayout>
 
-
-    <Chronometer
-        android:visibility="gone"
-        android:id="@+id/simpleChronometer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-light"
-        android:layout_above="@+id/capture"
-        android:gravity="center"
-        android:textColor="#9E9E9E"
-        android:textSize="50sp"/>
-
     <ImageButton
         android:layout_width="60sp"
         android:layout_height="60sp"

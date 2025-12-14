@@ -39,8 +39,6 @@ androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "
 androidx-media3-common = { module = "androidx.media3:media3-common", version.ref = "media3Version" }
 androidx-media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3Version" }
 
-
-
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 androidx-core-ktx-v190 = { module = "androidx.core:core-ktx", version.ref = "coreKtxVersion" }
 androidx-espresso-core-v351 = { module = "androidx.test.espresso:espresso-core", version.ref = "espressoCoreVersion" }
