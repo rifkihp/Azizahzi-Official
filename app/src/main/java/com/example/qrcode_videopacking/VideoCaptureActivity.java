@@ -34,6 +34,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraEffect;
@@ -169,6 +170,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }
     }
 
+    private int total_file_compressed = 0;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -231,21 +234,26 @@ public class VideoCaptureActivity extends AppCompatActivity {
         toggleFlash = findViewById(R.id.toggleFlash);
         flipCamera = findViewById(R.id.flipCamera);
         capture.setOnClickListener(view -> {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                activityResultLauncher.launch(Manifest.permission.CAMERA);
-            } else if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
+            if (total_file_compressed>2) {
+                showErrorDialog("Error", "Mohon tunggu sejenak.");
             } else {
-                waitToStart = false;
+                qrcode = "";
+                isDrawing = false;
                 captureVideo();
             }
         });
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             activityResultLauncher.launch(Manifest.permission.CAMERA);
-        } else {
-            startCamera(cameraFacing);
         }
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
+        }
+
+
+        startCamera(cameraFacing);
+
 
         flipCamera.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -314,7 +322,19 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
 
             public void onFinish() {
-                panelCompressing.setVisibility(View.GONE);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if(total_file_compressed==0) {
+                            panelCompressing.setVisibility(View.GONE);
+                        } else {
+                            if(panelCompressing.getVisibility()==View.GONE) {
+                                panelCompressing.setVisibility(View.VISIBLE);
+                            }
+                            ttlCompressing.setText(total_file_compressed+ " file "+(total_file_compressed>1?"s":"")+" compressing...");
+                        }
+                    }
+                });
             }
         };
 
@@ -419,6 +439,24 @@ public class VideoCaptureActivity extends AppCompatActivity {
         });
     }
 
+    private void showErrorDialog(String title, String message) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        builder.setMessage(message);
+        //builder.setIcon(R.drawable.ic_error); // Optional: add an error icon (make sure you have this in your drawables)
+        builder.setCancelable(false); // Prevents closing the dialog by tapping outside or pressing the back button
+
+        // Add a button to dismiss the dialog
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            // Action when the user clicks "OK" (optional)
+            dialog.dismiss();
+        });
+
+        // Create and show the dialog
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
     public void startCamera(int cameraFacing) {
         ListenableFuture<ProcessCameraProvider> processCameraProvider = ProcessCameraProvider.getInstance(this);
         processCameraProvider.addListener(() -> {
@@ -452,10 +490,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                         }
 
                         if(!waitToStart && !isRecord) {
-                            if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                                activityResultLauncher.launch(Manifest.permission.CAMERA);
-                            } else if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
+                            if (total_file_compressed>2) {
+                                showErrorDialog("Error", "Mohon tunggu sejenak.");
                             } else {
                                 qrcode = _qrCode;
                                 isDrawing = false;
@@ -534,6 +570,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
     }
 
     void compressFile_(Uri mFileCapture, String qrcode, int index_of_file) {
+        total_file_compressed++;
+
         // Create a new Thread
         Thread backgroundThread = new Thread(new Runnable() {
             @Override
@@ -543,9 +581,9 @@ public class VideoCaptureActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         if(panelCompressing.getVisibility()==View.GONE) {
-                            ttlCompressing.setText(R.string.compressing);
                             panelCompressing.setVisibility(View.VISIBLE);
                         }
+                        ttlCompressing.setText(total_file_compressed+ " file "+(total_file_compressed>1?"s":"")+" compressing...");
                     }
                 });
 
@@ -560,13 +598,18 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
                         if (ReturnCode.isSuccess(session.getReturnCode())) {
                             // Compression successful
+                            total_file_compressed--;
+
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    panelCompressing.setVisibility(View.GONE);
+                                    if(total_file_compressed==0) {
+                                        panelCompressing.setVisibility(View.GONE);
+                                    } else {
+                                        ttlCompressing.setText(total_file_compressed+ " file "+(total_file_compressed>1?"s":"")+" compressing...");
+                                    }
                                 }
                             });
-
                             int lastSpaceIndex = session.getCommand().lastIndexOf(" ");
                             String output_file = session.getCommand().substring(lastSpaceIndex + 1);
                             File file          = new File(output_file);
@@ -576,6 +619,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                         } else if (ReturnCode.isCancel(session.getReturnCode())) {
                             // Compression cancelled
                             Log.d("FFmpeg", "Video compression cancelled.");
+                            total_file_compressed--;
+
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
@@ -589,6 +634,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                         } else {
                             // Compression failed
                             Log.e("FFmpeg", "Video compression failed: " + session.getFailStackTrace());
+                            total_file_compressed--;
+
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
