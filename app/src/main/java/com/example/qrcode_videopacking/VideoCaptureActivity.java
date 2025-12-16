@@ -18,6 +18,7 @@ import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -68,6 +69,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -128,9 +130,26 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     private ActivityResultLauncher<Intent> storageActivityResultLauncher;
 
-    private Handler overlayHandler;
-    private Runnable updateOverlayRunnable;
-    private String currentDate = "";
+    private boolean isRunning = false;
+    private boolean isDrawing = false;
+    private DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+    private Paint paint = new Paint();
+    private String currentDate = dateFormat.format(Calendar.getInstance().getTime());
+
+    // 1. Initialize Handler and Runnable
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable timerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // 2. Define the task (update UI)
+            currentDate = dateFormat.format(Calendar.getInstance().getTime());
+
+            // 3. Schedule next execution in 1000ms (1 second)
+            handler.postDelayed(this, 1000);
+
+            isDrawing = false;
+        }
+    };
 
     private void checkAndRequestStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -182,18 +201,10 @@ public class VideoCaptureActivity extends AppCompatActivity {
         StrictMode.setVmPolicy(builder.build());
         builder.detectFileUriExposure();
 
-        overlayHandler  = new Handler(getMainLooper());
-        updateOverlayRunnable = new Runnable() {
-
-            @Override
-            public void run() {
-                // Perform task
-                Calendar calendar = Calendar.getInstance();
-                SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
-                currentDate = dateFormat.format(calendar.getTime());
-                overlayHandler.postDelayed(this, 1000);
-            }
-        };
+        paint.setColor(Color.WHITE);
+        paint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        paint.setTextSize(45f);
+        paint.setAntiAlias(true);
 
         pbVideoUpload    = findViewById(R.id.pbVideoUpload);
         stVideoUpload    = findViewById(R.id.stVideoUpload);
@@ -307,7 +318,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
             }
         };
 
-        overlayHandler.postDelayed(updateOverlayRunnable, 1000);
         for(int i=0; i<count_of_files; i++) {
             progress_upload_file[i] = -1;
         }
@@ -323,9 +333,29 @@ public class VideoCaptureActivity extends AppCompatActivity {
         }*/
     }
 
+    private void startTimer() {
+        if (!isRunning) {
+            handler.postDelayed(timerRunnable, 1000);
+            isRunning = true;
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        startTimer();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopTimer(); // Recommended to stop when activity is not visible
+    }
+
+    private void stopTimer() {
+        // 4. Stop the timer to prevent memory leaks or unwanted background activity
+        handler.removeCallbacks(timerRunnable);
+        isRunning = false;
     }
 
     public void captureVideo() {
@@ -384,6 +414,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 isRecord = false;
                 prosesStop = false;
                 qrcode = "";
+                isDrawing = false;
             }
         });
     }
@@ -427,6 +458,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                                 activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
                             } else {
                                 qrcode = _qrCode;
+                                isDrawing = false;
                                 captureVideo();
                             }
                         }
@@ -465,25 +497,28 @@ public class VideoCaptureActivity extends AppCompatActivity {
 
     @NonNull
     private OverlayEffect getOverlayEffect() {
-        OverlayEffect overlayEffect = new OverlayEffect(CameraEffect.PREVIEW | CameraEffect.VIDEO_CAPTURE, 0, overlayHandler, null);
+
+        OverlayEffect overlayEffect = new OverlayEffect(
+                CameraEffect.PREVIEW | CameraEffect.VIDEO_CAPTURE,
+                0,
+                handler,
+                null);
+
         overlayEffect.setOnDrawListener(frame -> {
-            Canvas canvas = frame.getOverlayCanvas();
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            if(!isDrawing) {
+                Canvas canvas = frame.getOverlayCanvas();
+                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
 
-            Paint paint = new Paint();
-            paint.setColor(Color.WHITE);
-            paint.setTextSize(45f);
+                float left = 60f;
+                float top = (canvas.getHeight() / 1.25f);
+                canvas.rotate(-90, left, top);
 
-            paint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-            paint.setAntiAlias(true);
+                canvas.drawText(currentDate, left, top, paint);
+                canvas.drawText(qrcode, left, top + left - 10f, paint);
 
-            float left = 60f;
-            float top = (canvas.getHeight()/1.25f);
-
-            canvas.rotate(-90, left, top);
-            canvas.drawText(currentDate, left, top, paint);
-            canvas.drawText(qrcode, left, top+left-10f, paint);
-
+                Log.e("CHECKPOINT", currentDate);
+                isDrawing = true;
+            }
             return true;
         });
 
