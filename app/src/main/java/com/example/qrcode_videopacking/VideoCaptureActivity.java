@@ -552,7 +552,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 File file              = new File(Objects.requireNonNull(GalleryFilePath.getPath(context, mFileCapture)));
                 String inputFilePath   = file.getAbsolutePath();
                 String outputFilePath  = inputFilePath.substring(0, inputFilePath.length()-4)+"_compressed.mp4";
-                String command         = "-i "+inputFilePath+" -r 24 -b:v 1500k -c:a aac -b:a 32k -ar 16000 -c:v libx264 -preset medium "+outputFilePath;
+                String command         = "-i "+inputFilePath+" -r 24 -b:v 1500k -c:a aac -b:a 32k -ar 16000 -c:v libx264 -preset fast "+outputFilePath;
 
                 FFmpegKit.executeAsync(command, new FFmpegSessionCompleteCallback() {
                     @Override
