@@ -34,6 +34,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.Camera;
@@ -72,9 +73,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -88,6 +93,8 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public class VideoCaptureActivity extends AppCompatActivity {
+    final private int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 124;
+
     ExecutorService service;
     Recording recording = null;
     VideoCapture<Recorder> videoCapture = null;
@@ -184,18 +191,14 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     if (Environment.isExternalStorageManager()) {
                         // All files access granted
-                        Log.e("RERE", "All files access granted");
                         Toast.makeText(this, "All files access granted", Toast.LENGTH_SHORT).show();
                     } else {
                         // All files access denied
-                        Log.e("RERE", "All files access denied");
                         Toast.makeText(this, "All files access denied", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
         );
-
-        checkAndRequestStoragePermission();
 
         Objects.requireNonNull(getSupportActionBar()).hide();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -242,18 +245,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
                 captureVideo();
             }
         });
-
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            activityResultLauncher.launch(Manifest.permission.CAMERA);
-        }
-
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            activityResultLauncher.launch(Manifest.permission.RECORD_AUDIO);
-        }
-
-
-        startCamera(cameraFacing);
-
 
         flipCamera.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -342,6 +333,11 @@ public class VideoCaptureActivity extends AppCompatActivity {
             progress_upload_file[i] = -1;
         }
 
+        checkAndRequestStoragePermission();
+        if (Build.VERSION.SDK_INT >= 23) {
+            insertDummyContactWrapper();
+        }
+
         /*String filePath = "/storage/emulated/0/Movies/CameraX-Video/bigfile.mp4";
         File file = new File(filePath);
         if(file.exists()) {
@@ -379,10 +375,6 @@ public class VideoCaptureActivity extends AppCompatActivity {
     }
 
     public void captureVideo() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-
         Recording recording1 = recording;
         if (recording1 != null) {
             recording1.stop();
@@ -583,7 +575,7 @@ public class VideoCaptureActivity extends AppCompatActivity {
                         if(panelCompressing.getVisibility()==View.GONE) {
                             panelCompressing.setVisibility(View.VISIBLE);
                         }
-                        ttlCompressing.setText(total_file_compressed+ " file "+(total_file_compressed>1?"s":"")+" compressing...");
+                        ttlCompressing.setText(total_file_compressed+ " file"+(total_file_compressed>1?"s":"")+" compressing...");
                     }
                 });
 
@@ -817,6 +809,88 @@ public class VideoCaptureActivity extends AppCompatActivity {
         backgroundThread.start();
 
     }
+
+    private void insertDummyContactWrapper() {
+        List<String> permissionsNeeded = new ArrayList<>();
+        final List<String> permissionsList = new ArrayList<>();
+
+        if (addPermission(permissionsList, Manifest.permission.CAMERA))
+            permissionsNeeded.add("CAMERA");
+        if (addPermission(permissionsList, Manifest.permission.RECORD_AUDIO))
+            permissionsNeeded.add("RECORD_AUDIO");
+
+        if (!permissionsList.isEmpty()) {
+            if (!permissionsNeeded.isEmpty()) {
+                // Need Rationale
+                String message = "You need to grant access to " + permissionsNeeded.get(0);
+                for (int i = 1; i < permissionsNeeded.size(); i++)
+                    message = message + ", " + permissionsNeeded.get(i);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    requestPermissions(permissionsList.toArray(new String[permissionsList.size()]), REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+                }
+
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                requestPermissions(permissionsList.toArray(new String[permissionsList.size()]), REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+            }
+
+        } else {
+            startCamera(cameraFacing);
+        }
+    }
+
+    private boolean addPermission(List<String> permissionsList, String permission) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                permissionsList.add(permission);
+
+                // Check for Rationale Option
+                if (!shouldShowRequestPermissionRationale(permission)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+
+        switch (requestCode) {
+            case REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS: {
+                Map<String, Integer> perms = new HashMap<String, Integer>();
+
+                // Initial
+                perms.put(Manifest.permission.CAMERA, PackageManager.PERMISSION_GRANTED);
+                perms.put(Manifest.permission.RECORD_AUDIO, PackageManager.PERMISSION_GRANTED);
+
+                // Fill with results
+                for (int i = 0; i < permissions.length; i++)
+                    perms.put(permissions[i], grantResults[i]);
+
+                if (
+                    perms.get(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                    perms.get(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    // All Permissions Granted
+                    startCamera(cameraFacing);
+                } else {
+                    // Permission Denied
+                    Toast.makeText(context, "Some Permission is Denied!", Toast.LENGTH_SHORT).show();
+                }
+            }
+            break;
+
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+
+
 
     void checkBeforeRecord(String tracking_number) {
         // Create a new Thread
