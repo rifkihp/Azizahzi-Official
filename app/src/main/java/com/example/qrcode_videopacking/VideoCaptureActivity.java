@@ -397,6 +397,16 @@ public class VideoCaptureActivity extends AppCompatActivity {
         MediaStoreOutputOptions options = new MediaStoreOutputOptions.Builder(getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
                 .setContentValues(contentValues).build();
 
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
         recording = videoCapture.getOutput().prepareRecording(this, options).withAudioEnabled().start(ContextCompat.getMainExecutor(this), videoRecordEvent -> {
             if (videoRecordEvent instanceof VideoRecordEvent.Start) {
                 capture.setEnabled(true);
@@ -488,6 +498,8 @@ public class VideoCaptureActivity extends AppCompatActivity {
                                 qrcode = _qrCode;
                                 isDrawing = false;
                                 captureVideo();
+
+
                             }
                         }
                     }
